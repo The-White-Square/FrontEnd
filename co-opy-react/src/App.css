@@ -1,0 +1,143 @@
+* {
+    box-sizing: border-box;
+}
+
+body, button, input, select, textarea {
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+}
+
+.home-page {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                gap: 20px;
+}
+
+.buttons-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 220px;
+}
+
+.top-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.top-buttons button {
+    flex: 1;
+    padding: 10px 0;
+}
+
+.bottom-button {
+    width: 100%;
+    padding: 10px 0;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0,0,0,0.5);
+    z-index: 10;
+}
+
+.fadeIn {
+    animation: fadeIn 0.3s forwards;
+}
+
+.fadeOut {
+    animation: fadeOut 0.3s forwards;
+}
+
+.modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    min-width: 300px;
+    text-align: center;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    z-index: 20;
+}
+
+.modal input {
+    width: 100%;
+    padding: 8px 10px;
+    margin: 0;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: transparent;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.scaleUp {
+    animation: scaleUp 0.3s forwards;
+}
+
+.scaleDown {
+    animation: scaleDown 0.3s forwards;
+}
+
+.avatar-buttons {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.avatar-buttons button {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 1px solid #333;
+    background: #eee;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.avatar-buttons button:hover {
+    transform: scale(1.1);
+}
+
+.avatar-buttons button.selected {
+    border: 2px solid #007bff;
+    background: #cce5ff;
+}
+
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes scaleUp {
+    from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+@keyframes scaleDown {
+    from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    to { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+}
