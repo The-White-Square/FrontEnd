@@ -3,7 +3,37 @@
 }
 
 body, button, input, select, textarea {
-    font-family: 'Comic Sans MS', cursive, sans-serif;
+    font-family: 'Jersey 25', cursive, sans-serif;
+}
+
+body {
+    background-color: #FFEABD;
+    color: #790000;
+}
+
+button {
+    color: #790000;
+    border-color: #F85F5F;
+    border-radius: 10px;
+    font-size: large;
+}
+
+h3 {
+    text-align: center;
+}
+
+h4 {
+    text-align: left;
+}
+
+.jersey-25-regular {
+  font-family: "Jersey 25", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+
+input {
+    width: 100%;
 }
 
 .home-page {
@@ -19,7 +49,7 @@ body, button, input, select, textarea {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 220px;
+    width: 720px;
 }
 
 .top-buttons {
@@ -28,11 +58,13 @@ body, button, input, select, textarea {
 }
 
 .top-buttons button {
+    background: linear-gradient(to bottom, #FF4242, #FF8800);
     flex: 1;
     padding: 10px 0;
 }
 
 .bottom-button {
+    background: linear-gradient(to top, #FF4242, #FF8800);
     width: 100%;
     padding: 10px 0;
 }
@@ -73,7 +105,7 @@ body, button, input, select, textarea {
     width: 100%;
     padding: 8px 10px;
     margin: 0;
-    border: 1px solid #ccc;
+    border: 1px solid ;
     border-radius: 5px;
 }
 
@@ -106,8 +138,7 @@ body, button, input, select, textarea {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    border: 1px solid #333;
-    background: #eee;
+    
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -117,8 +148,7 @@ body, button, input, select, textarea {
 }
 
 .avatar-buttons button.selected {
-    border: 2px solid #007bff;
-    background: #cce5ff;
+    border: 2px solid #790000;
 }
 
 
