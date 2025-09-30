@@ -1,5 +1,6 @@
 import './App.css'
 import { useState } from 'react'
+import logo from './assets/logo.png';
 
 function App() {
     return (
@@ -24,10 +25,11 @@ function Home() {
 
     return (
         <div className='home-page'>
+            <img id='logo' src={logo} alt='co-opy logo' />
             <div className='buttons-container'>
                 <h3>Create or join a room:</h3>
                 <div className='top-buttons'>
-                    <button className='top-button' onClick={() => setOpenModal('create')}>
+                    <button onClick={() => setOpenModal('create')}>
                         CREATE ROOM
                     </button>
                     <button onClick={() => setOpenModal('join')}>

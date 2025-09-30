@@ -7,7 +7,10 @@ body, button, input, select, textarea {
 }
 
 body {
-    background-color: #FFEABD;
+    background-image: url('./assets/bg.png');
+    background-position: center;
+    margin: 0;
+    
     color: #790000;
 }
 
@@ -16,6 +19,12 @@ button {
     border-color: #F85F5F;
     border-radius: 10px;
     font-size: large;
+    transition: filter 0.3s ease;
+}
+
+#logo {
+    width: 70vw;
+    height: auto;
 }
 
 h3 {
@@ -37,19 +46,19 @@ input {
 }
 
 .home-page {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-                gap: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 20px;
 }
 
 .buttons-container {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 720px;
+    width: 30vw;
 }
 
 .top-buttons {
@@ -67,6 +76,10 @@ input {
     background: linear-gradient(to top, #FF4242, #FF8800);
     width: 100%;
     padding: 10px 0;
+}
+
+button:hover {
+  filter: brightness(85%);
 }
 
 .overlay {
