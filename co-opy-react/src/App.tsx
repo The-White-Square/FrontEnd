@@ -1,6 +1,8 @@
 import './App.css'
 import { useState } from 'react'
 import logo from './assets/logo.png';
+import settings from './assets/settings.png';
+import sound from './assets/sound.png';
 
 function App() {
     return (
@@ -14,17 +16,28 @@ function Home() {
     const [openModal, setOpenModal] = useState<null | 'create' | 'join' | 'choose'>(null)
     const [closing, setClosing] = useState(false)
     const [selectedAvatar, setSelectedAvatar] = useState<number | null>(null)
+    const [roomCreated, setRoomCreated] = useState(false)
 
     const handleClose = () => {
         setClosing(true)
         setTimeout(() => {
             setOpenModal(null)
             setClosing(false)
+            setRoomCreated(false)
         }, 300)
     }
 
     return (
         <div className='home-page'>
+            <div className='settings-sound'>
+                <button>
+                    <img src={settings} alt="settings" width="30" height="30" />
+                </button>
+                <br />
+                <button>
+                    <img src={sound} alt="sound" width="30" height="30" />
+                </button>
+            </div>
             <img id='logo' src={logo} alt='co-opy logo' />
             <div className='buttons-container'>
                 <h3>Create or join a room:</h3>
@@ -53,21 +66,16 @@ function Home() {
                         {openModal === 'create' && (
                             <>
                                 <h2>CREATE ROOM</h2>
-                                <h4>Room name:</h4>
-                                <input type='text' />
-                                <h4>Password:</h4>
-                                <input type='text' />
+                                {roomCreated && <h4 id='code'>123abc</h4>}
                                 <br /><br />
-                                <button>Create</button>
+                                <button onClick={() => setRoomCreated(true)}>Create</button>
                             </>
                         )}
 
                         {openModal === 'join' && (
                             <>
                                 <h2>JOIN ROOM</h2>
-                                <h4>Room name:</h4>
-                                <input type='text' />
-                                <h4>Password:</h4>
+                                <h4>Room code:</h4>
                                 <input type='text' />
                                 <br /><br />
                                 <button>Join</button>
