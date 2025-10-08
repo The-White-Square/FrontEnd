@@ -1,8 +1,11 @@
 import './App.css'
+import { PainterPage } from './PainterPage.tsx'
 
 function App() {
     return (
-        <div className="App"></div>
+        <div className="App">
+            <PainterPage />
+        </div>
     )
 }
 

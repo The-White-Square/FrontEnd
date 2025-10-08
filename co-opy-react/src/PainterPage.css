@@ -1,0 +1,44 @@
+.colors button {
+    width: 99px;
+    height: 71px;
+}
+
+#redColor {
+    background-color: red;
+}
+
+#orangeColor {
+    background-color: orange;
+}
+
+#yellowColor {
+    background-color: yellow;
+}
+
+#greenColor {
+    background-color: green;
+}
+
+#skyblueColor {
+    background-color: skyblue;
+}
+
+#blueColor {
+    background-color: blue;
+}
+
+#purpleColor {
+    background-color: purple;
+}
+
+#brownColor {
+    background-color: brown;
+}
+
+#blackColor {
+    background-color: black;
+}
+
+#whiteColor {
+    background-color: white;
+}
