@@ -6,12 +6,11 @@ import { useModalManager } from './hooks/useModalManager';
 import { homeStyles } from './styles/homeStyles';
 
 function Home() {
+  // Modal management
   const {
     openModal,
     closing,
     selectedAvatar,
-    roomCreated,
-    setRoomCreated,
     setSelectedAvatar,
     handleClose,
     openCreateModal,
@@ -32,8 +31,6 @@ function Home() {
         openModal={openModal}
         closing={closing}
         onClose={handleClose}
-        roomCreated={roomCreated}
-        setRoomCreated={setRoomCreated}
         selectedAvatar={selectedAvatar}
         setSelectedAvatar={setSelectedAvatar}
       />

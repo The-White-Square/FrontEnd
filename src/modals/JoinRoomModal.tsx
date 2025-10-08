@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ExpandButton from '../components/ExpandButton';
 
 type Props = {
@@ -7,11 +8,13 @@ type Props = {
 
 function JoinRoomModal({ onClose }: Props) {
     const [roomCode, setRoomCode] = useState('');
+    const navigate = useNavigate();
 
     const handleJoin = () => {
         if (roomCode.trim()) {
-            // Handle join room logic here
-            console.log('Joining room:', roomCode);
+            // Navigate to drawing page with room code
+            navigate(`/game/${roomCode}`);
+            onClose?.();
         }
     };
 

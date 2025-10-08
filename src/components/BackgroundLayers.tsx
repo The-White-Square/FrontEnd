@@ -1,4 +1,4 @@
-import patternBg from '../assets/pattern.png';
+const patternBg = '/pattern.png';
 
 interface BackgroundLayersProps {
   children: React.ReactNode;

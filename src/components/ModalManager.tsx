@@ -2,8 +2,6 @@ interface ModalManagerProps {
   openModal: 'create' | 'join' | 'choose' | null;
   closing: boolean;
   onClose: () => void;
-  roomCreated: boolean;
-  setRoomCreated: (v: boolean) => void;
   selectedAvatar: number | null;
   setSelectedAvatar: (id: number) => void;
 }
@@ -17,8 +15,6 @@ function ModalManager({
   openModal,
   closing,
   onClose,
-  roomCreated,
-  setRoomCreated,
   selectedAvatar,
   setSelectedAvatar,
 }: ModalManagerProps) {
@@ -28,8 +24,6 @@ function ModalManager({
     <ModalWrapper closing={closing} onClose={onClose}>
       {openModal === 'create' && (
         <CreateRoomModal 
-          roomCreated={roomCreated} 
-          setRoomCreated={setRoomCreated}
           onClose={onClose}
         />
       )}

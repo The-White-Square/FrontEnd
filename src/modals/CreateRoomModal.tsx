@@ -1,17 +1,21 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ExpandButton from '../components/ExpandButton';
 
 type Props = {
-  roomCreated: boolean
-  setRoomCreated: (v: boolean) => void
   onClose?: () => void
 }
 
-function CreateRoomModal({ roomCreated, setRoomCreated, onClose = () => {} }: Props) {
+function CreateRoomModal({ onClose = () => {} }: Props) {
     const [roomName, setRoomName] = useState('');
+    const navigate = useNavigate();
+    
     const handleCreate = () => {
         if (roomName.trim()) {
-            setRoomCreated(true);
+            // Generate a random room code for the created room
+            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            navigate(`/game/${roomCode}`);
+            onClose();
         }
     };
 
@@ -79,24 +83,7 @@ function CreateRoomModal({ roomCreated, setRoomCreated, onClose = () => {} }: Pr
                 </h2>
             </div>
 
-            {roomCreated ? (
-                <div style={{ textAlign: 'center' }}>
-                    <h4 id='code' style={{
-                        color: '#8B4513',
-                        fontFamily: "'Jersey 25', sans-serif",
-                        fontWeight: 'normal',
-                        fontSize: '22px',
-                        margin: '16px 0',
-                        padding: '16px',
-                        background: 'rgba(255,255,255,0.6)',
-                        borderRadius: '12px',
-                        border: '2px solid rgba(139, 69, 19, 0.2)'
-                    }}>
-                        Room Code: 123abc
-                    </h4>
-                </div>
-            ) : (
-                <>
+            {/* Input Section */}
                     {/* Input Section */}
                     <div style={{ marginBottom: '35px' }}>
                         <label style={{
@@ -152,8 +139,6 @@ function CreateRoomModal({ roomCreated, setRoomCreated, onClose = () => {} }: Pr
                             Create
                         </ExpandButton>
                     </div>
-                </>
-            )}
         </div>
     )
 }

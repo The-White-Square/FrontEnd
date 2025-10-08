@@ -6,14 +6,12 @@ export function useModalManager() {
   const [openModal, setOpenModal] = useState<ModalType>(null);
   const [closing, setClosing] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState<number | null>(null);
-  const [roomCreated, setRoomCreated] = useState(false);
 
   const handleClose = () => {
     setClosing(true);
     setTimeout(() => {
       setOpenModal(null);
       setClosing(false);
-      setRoomCreated(false);
     }, MODAL_ANIMATION_DURATION);
   };
 
@@ -25,8 +23,6 @@ export function useModalManager() {
     openModal,
     closing,
     selectedAvatar,
-    roomCreated,
-    setRoomCreated,
     setSelectedAvatar,
     handleClose,
     openCreateModal,

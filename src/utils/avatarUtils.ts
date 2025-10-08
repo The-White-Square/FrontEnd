@@ -1,10 +1,10 @@
 import { AVATAR_CONFIG } from '../constants/avatarConstants';
 
-// Generate avatar imports for all avatars
+// Generate avatar paths for all avatars from public folder
 export const generateAvatars = (): string[] => {
   return Array.from({ length: AVATAR_CONFIG.TOTAL_AVATARS }, (_, i) => {
     const avatarNumber = i + 1;
-    return new URL(`../assets/avatars/avatar${avatarNumber}.png`, import.meta.url).href;
+    return `/avatars/avatar${avatarNumber}.png`;
   });
 };
 
