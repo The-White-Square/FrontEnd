@@ -1,4 +1,3 @@
-import React from 'react';
 import { FaPaperPlane } from 'react-icons/fa';
 
 interface ChatInputProps {
@@ -7,7 +6,7 @@ interface ChatInputProps {
   onSend: () => void;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ value, onChange, onSend }) => {
+const ChatInput = ({ value, onChange, onSend }: ChatInputProps) => {
   // Handle Enter key press to send message
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -23,7 +22,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ value, onChange, onSend }) => {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Rašyk čia..."
+          placeholder="Type here..."
           className="chat-input"
         />
       </div>

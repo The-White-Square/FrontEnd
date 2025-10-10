@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import type { ChatMessage, Player } from '../types/drawingTypes';
 
 interface ChatWindowProps {
@@ -6,7 +6,7 @@ interface ChatWindowProps {
   players: Player[];
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ messages, players }) => {
+const ChatWindow = ({ messages, players }: ChatWindowProps) => {
   const chatMessagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

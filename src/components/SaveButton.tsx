@@ -1,4 +1,3 @@
-import React from 'react';
 import ExpandButton from './ExpandButton';
 import { AVATAR_STYLES } from '../constants/avatarConstants';
 
@@ -9,7 +8,7 @@ interface SaveButtonProps {
   className?: string;
 }
 
-const SaveButton: React.FC<SaveButtonProps> = ({ username, selectedAvatar, onSave, className }) => {
+const SaveButton = ({ username, selectedAvatar, onSave, className }: SaveButtonProps) => {
   const isEnabled = username.trim() && selectedAvatar;
 
   return (

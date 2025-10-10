@@ -22,11 +22,11 @@ function ExpandButton({
         ...style, 
         // Apply transform based on hover/active state for animation
         transform: active
-          ? "scale(0.97) translateY(2px)" // Slightly shrink and move down when pressed
+          ? "scale(0.97) translateY(2px)"
           : hover
-          ? "scale(1.05)" // Slightly enlarge when hovered
-          : "scale(1)", // Default size when not hovered or pressed
-        transition: "transform 0.1s", // Smooth transition for transform changes
+          ? "scale(1.05)" 
+          : "scale(1)", 
+        transition: "transform 0.1s", 
       }}
       onMouseEnter={() => setHover(true)} 
       onMouseLeave={() => {

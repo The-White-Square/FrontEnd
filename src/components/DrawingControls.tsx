@@ -1,4 +1,3 @@
-import React from 'react';
 import { FaUndo, FaRedo } from 'react-icons/fa';
 
 interface DrawingControlsProps {
@@ -7,7 +6,7 @@ interface DrawingControlsProps {
   onClear: () => void;
 }
 
-const DrawingControls: React.FC<DrawingControlsProps> = ({ onUndo, onRedo, onClear }) => {
+const DrawingControls = ({ onUndo, onRedo, onClear }: DrawingControlsProps) => {
   return (
     <>
       {/* Undo/Redo controls */}

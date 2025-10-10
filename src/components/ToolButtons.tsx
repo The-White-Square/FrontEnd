@@ -1,4 +1,3 @@
-import React from 'react';
 import { FaEraser, FaPencilAlt, FaFill } from 'react-icons/fa';
 
 interface ToolButtonsProps {
@@ -6,7 +5,7 @@ interface ToolButtonsProps {
   onToolSelect: (tool: 'brush' | 'eraser' | 'fill') => void;
 }
 
-const ToolButtons: React.FC<ToolButtonsProps> = ({ selectedTool, onToolSelect }) => {
+const ToolButtons = ({ selectedTool, onToolSelect }: ToolButtonsProps) => {
   return (
     <div className="tool-buttons">
       <button

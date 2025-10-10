@@ -84,7 +84,6 @@ function CreateRoomModal({ onClose = () => {} }: Props) {
             </div>
 
             {/* Input Section */}
-                    {/* Input Section */}
                     <div style={{ marginBottom: '35px' }}>
                         <label style={{
                             color: '#8B4513',

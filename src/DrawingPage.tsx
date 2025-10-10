@@ -1,4 +1,12 @@
-import React, { useRef, useCallback } from 'react';
+/**
+ * Drawing Page Component
+ * 
+ * The main game interface where players draw and interact.
+ * Features a canvas for drawing, chat system, tool selection,
+ * and responsive layout that adapts to different screen sizes.
+ */
+
+import { useRef, useCallback } from 'react';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
 import Canvas, { type CanvasRef } from './components/Canvas';
@@ -11,50 +19,72 @@ import DrawingControls from './components/DrawingControls';
 import { useDrawingState } from './hooks/useDrawingState';
 import './styles/DrawingPage.css';
 
-const DrawingPage: React.FC = () => {
-  // Canvas reference
+/**
+ * Main drawing game interface
+ * 
+ * Provides a complete drawing environment with:
+ * - Interactive canvas using Konva for drawing
+ * - Chat system for player communication
+ * - Tool selection (brush, eraser, fill)
+ * - Color palette and brush size controls
+ * - Undo/redo/clear functionality
+ * - Responsive layout for different screen sizes
+ */
+const DrawingPage = () => {
+  // Reference to canvas component for direct method calls
   const canvasRef = useRef<CanvasRef>(null);
   
-  // Drawing state
+  // All drawing game state from custom hook
   const {
-    selectedColor,
-    setSelectedColor,
-    brushSize,
-    setBrushSize,
-    selectedTool,
-    setSelectedTool,
-    colors,
-    chatMessages,
-    chatInput,
-    setChatInput,
-    sendMessage,
-    players,
-    isSmallScreen,
+    selectedColor,     // Current drawing color
+    setSelectedColor,  // Function to change color
+    brushSize,         // Current brush size
+    setBrushSize,      // Function to change brush size
+    selectedTool,      // Current tool (brush/eraser/fill)
+    setSelectedTool,   // Function to change tool
+    colors,            // Available color palette
+    chatMessages,      // Chat message history
+    chatInput,         // Current chat input text
+    setChatInput,      // Function to update chat input
+    sendMessage,       // Function to send chat message
+    players,           // List of game players
+    isSmallScreen,     // Responsive layout flag
   } = useDrawingState();
 
-  // Canvas save state callback
+  /**
+   * Canvas save state callback
+   * 
+   * Called when the canvas state should be saved for undo/redo.
+   * The actual implementation is handled inside the Canvas component.
+   */
   const handleSaveState = useCallback(() => {
     // This function is called when the canvas state should be saved
     // The actual implementation is handled by the Canvas component
   }, []);
 
-  // Canvas controls
-  const handleUndo = () => canvasRef.current?.undo();
-  const handleRedo = () => canvasRef.current?.redo();
-  const handleClear = () => canvasRef.current?.clear();
+  // Canvas control functions that call methods on the canvas component
+  const handleUndo = () => canvasRef.current?.undo();   // Undo last action
+  const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
+  const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
   
   return (
     <BackgroundLayers>
+      {/* Floating controls in top-left corner */}
       <FloatingControls />
+      
       <div className="drawing-page">
         <div className="game-container">
+          {/* Main content area with 3-column layout */}
           <div className="main-content">
-            {/* Left Sidebar - Chat */}
+            {/* Left Sidebar - Chat System */}
             <div className="chat-sidebar">
-              <ChatWindow messages={chatMessages} players={players} />
+              <ChatWindow 
+                messages={chatMessages} 
+                players={players} 
+              />
             </div>
             
-            {/* Main Canvas Area */}
+            {/* Center - Main Canvas Area */}
             <div className="canvas-container">
               <Canvas
                 ref={canvasRef}
@@ -65,7 +95,7 @@ const DrawingPage: React.FC = () => {
               />
             </div>
             
-            {/* Right Sidebar - Tools */}
+            {/* Right Sidebar - Drawing Tools */}
             <div className="tools-sidebar">
               {/* Color selection palette */}
               <ColorPalette
@@ -73,14 +103,15 @@ const DrawingPage: React.FC = () => {
                 selectedColor={selectedColor}
                 onColorSelect={setSelectedColor}
               />
-              {/* Drawing tool buttons */}
+              
+              {/* Drawing tool buttons (brush, eraser, fill) */}
               <ToolButtons
                 selectedTool={selectedTool}
                 onToolSelect={setSelectedTool}
               />
             </div>
             
-            {/* Brush Size Slider */}
+            {/* Brush Size Control - Position varies by screen size */}
             <BrushSizeSlider
               brushSize={brushSize}
               onBrushSizeChange={setBrushSize}
@@ -88,7 +119,7 @@ const DrawingPage: React.FC = () => {
             />
           </div>
           
-          {/* Bottom Controls */}
+          {/* Bottom Controls Row */}
           <div className="bottom-controls">
             {/* Chat message input */}
             <ChatInput
@@ -96,7 +127,8 @@ const DrawingPage: React.FC = () => {
               onChange={setChatInput}
               onSend={sendMessage}
             />
-            {/* Canvas control buttons */}
+            
+            {/* Canvas control buttons (undo, redo, clear) */}
             <DrawingControls
               onUndo={handleUndo}
               onRedo={handleRedo}

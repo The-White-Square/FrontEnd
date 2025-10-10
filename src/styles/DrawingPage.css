@@ -140,6 +140,13 @@
   cursor: crosshair;
   width: 700px;
   height: 700px;
+  overflow: hidden;
+  position: relative;
+}
+
+.drawing-canvas canvas {
+  border-radius: 16px;
+  display: block;
 }
 
 /* Right Sidebar - Tools */

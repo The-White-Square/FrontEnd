@@ -1,16 +1,14 @@
-import React from 'react';
-
 interface ColorPaletteProps {
   colors: string[];
   selectedColor: string;
   onColorSelect: (color: string) => void;
 }
 
-const ColorPalette: React.FC<ColorPaletteProps> = ({ 
+const ColorPalette = ({ 
   colors, 
   selectedColor, 
   onColorSelect 
-}) => {
+}: ColorPaletteProps) => {
   return (
     <div className="color-palette">
       {colors.map((color, index) => (

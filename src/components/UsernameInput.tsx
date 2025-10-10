@@ -1,4 +1,3 @@
-import React from 'react';
 import { AVATAR_STYLES } from '../constants/avatarConstants';
 
 interface UsernameInputProps {
@@ -7,7 +6,7 @@ interface UsernameInputProps {
   className?: string;
 }
 
-const UsernameInput: React.FC<UsernameInputProps> = ({ value, onChange, className }) => {
+const UsernameInput = ({ value, onChange, className }: UsernameInputProps) => {
   return (
     <div style={{
       marginBottom: '25px',

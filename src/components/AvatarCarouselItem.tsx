@@ -1,4 +1,3 @@
-import React from 'react';
 import ExpandButton from './ExpandButton';
 import { AVATAR_STYLES, AVATAR_CONFIG } from '../constants/avatarConstants';
 import type { AvatarItem } from '../utils/avatarUtils';
@@ -10,12 +9,12 @@ interface AvatarCarouselItemProps {
   onSelect?: () => void;
 }
 
-const AvatarCarouselItem: React.FC<AvatarCarouselItemProps> = ({
+const AvatarCarouselItem = ({
   item,
   index,
   selectedAvatar,
   onSelect,
-}) => {
+}: AvatarCarouselItemProps) => {
   const isCenter = index === AVATAR_CONFIG.CENTER_INDEX;
   const opacity = isCenter ? AVATAR_STYLES.OPACITY.centerAvatar : AVATAR_STYLES.OPACITY.sideAvatar;
 

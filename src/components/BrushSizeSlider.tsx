@@ -1,16 +1,14 @@
-import React from 'react';
-
 interface BrushSizeSliderProps {
   brushSize: number;
   onBrushSizeChange: (size: number) => void;
   isSmallScreen: boolean;
 }
 
-const BrushSizeSlider: React.FC<BrushSizeSliderProps> = ({ 
+const BrushSizeSlider = ({ 
   brushSize, 
   onBrushSizeChange, 
   isSmallScreen 
-}) => {
+}: BrushSizeSliderProps) => {
   // Handle clicking on slider track
   const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

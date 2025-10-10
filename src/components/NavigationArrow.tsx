@@ -1,4 +1,3 @@
-import React from 'react';
 import ExpandButton from './ExpandButton';
 import { AVATAR_STYLES } from '../constants/avatarConstants';
 
@@ -8,7 +7,7 @@ interface NavigationArrowProps {
   className?: string;
 }
 
-const NavigationArrow: React.FC<NavigationArrowProps> = ({ direction, onClick, className }) => {
+const NavigationArrow = ({ direction, onClick, className }: NavigationArrowProps) => {
   return (
     <ExpandButton
       onClick={onClick}

@@ -8,22 +8,8 @@ export const homeStyles = `
     max-width: 1850px;
     height: 90vh;
     max-height: 920px;
-    transform: translate(-50%, -50%);    .avatar-modal .save-button {
-      font-size: 22px !important;
-    }
-    
-    .avatar-modal .center-avatar {
-      width: 120px !important;
-      height: 120px !important;
-    }
-    
-    .avatar-modal .side-avatar {
-      width: 85px !important;
-      height: 85px !important;
-    }
-  }
-
-  @media (max-width: 700px) {border-radius: 48px;
+    transform: translate(-50%, -50%);
+    border-radius: 48px;
     overflow: hidden;
     box-shadow: 0 8px 48px 0 #0000009a;
   }
