@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ExpandButton from '../components/ExpandButton';
 
 type Props = {
-  onClose?: () => void
+    onClose?: () => void
 }
 
 function JoinRoomModal({ onClose }: Props) {
@@ -20,19 +20,19 @@ function JoinRoomModal({ onClose }: Props) {
 
     return (
         <div className="join-room-modal" style={{
-                background: '#FFC892',
-                border: '3px solid #FFB042',
-                borderRadius: '30px',
-                padding: '35px',
-                minWidth: '450px',
-                maxWidth: '550px',
-                minHeight: '350px',
-                boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
-                position: 'relative'
-            }}>
-            
+            background: '#FFC892',
+            border: '3px solid #FFB042',
+            borderRadius: '30px',
+            padding: '35px',
+            minWidth: '450px',
+            maxWidth: '550px',
+            minHeight: '350px',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.4)',
+            position: 'relative'
+        }}>
+
             {/* Close Button */}
-            <ExpandButton 
+            <ExpandButton
                 onClick={onClose}
                 className="close-button"
                 style={{
@@ -53,7 +53,7 @@ function JoinRoomModal({ onClose }: Props) {
             >
                 ×
             </ExpandButton>
-            
+
             {/* Title Block */}
             <div className="modal-title-block" style={{
                 background: '#FF962C',
@@ -113,14 +113,14 @@ function JoinRoomModal({ onClose }: Props) {
                     placeholder="Enter room code"
                 />
             </div>
-            
+
             {/* Join Button */}
             <div style={{ textAlign: 'center', marginTop: '15px' }}>
                 <ExpandButton
                     onClick={roomCode.trim() ? handleJoin : undefined}
                     style={{
                         padding: '16px 40px',
-                        background: roomCode.trim() 
+                        background: roomCode.trim()
                             ? '#FEC65F'
                             : 'rgba(139, 69, 19, 0.3)',
                         color: roomCode.trim() ? '#DA6804' : 'rgba(139, 69, 19, 0.6)',
