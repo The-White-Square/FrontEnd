@@ -15,6 +15,11 @@ class LobbyHubClient {
     private onReceiveImage?: ReceiveImageHandler;
     private onRolesAssigned?: RolesAssignedHandler;
 
+    // persist last joined lobby info so we can re-join groups after reconnect
+    private lastLobbyId?: string;
+    private lastPlayerName?: string;
+    private lastIconId?: number;
+
     // start the connection and attach all known handlers
     async start() {
         if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) return;
@@ -61,10 +66,29 @@ class LobbyHubClient {
         this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
         this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
+        // re-join lobby group when the connection is re-established (on reconnect)
+        this.connection.onreconnected(async (connectionId?: string) => {
+            console.debug("[hub] reconnected, connectionId=", connectionId);
+            try {
+                if (this.lastLobbyId && this.lastPlayerName) {
+                    // re-invoke AddPlayerToLobby so server adds this connection to the group and updates ConnectionId
+                    await this.connection!.invoke("AddPlayerToLobby", this.lastLobbyId, this.lastPlayerName, this.lastIconId ?? 0);
+                    console.debug("[hub] re-joined lobby", this.lastLobbyId);
+                }
+            } catch (err) {
+                console.error("Failed to re-join lobby after reconnect", err);
+            }
+        });
+
         await this.connection.start();
     }
 
     async addPlayerToLobby(lobbyId: string, playerName: string, iconId = 0) {
+        // store joining info for reconnects
+        this.lastLobbyId = lobbyId;
+        this.lastPlayerName = playerName;
+        this.lastIconId = iconId;
+
         if (!this.connection) await this.start();
         await this.connection!.invoke("AddPlayerToLobby", lobbyId, playerName, iconId);
     }

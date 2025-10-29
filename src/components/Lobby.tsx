@@ -11,6 +11,7 @@ export default function Lobby() {
     const [players, setPlayers] = useState<string[]>([]);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [myRole, setMyRole] = useState<string | null>(null);
+    const [roles, setRoles] = useState<Record<string, string>>({});
 
     useEffect(() => {
         // full players state (new joiner receives current list)
@@ -27,10 +28,26 @@ export default function Lobby() {
             });
         });
 
+        // map backend enum role names to UI labels
+        const normalizeRole = (roleStr?: string | null) => {
+            if (!roleStr) return null;
+            const r = roleStr.toLowerCase();
+            if (r.includes("expl") || r.includes("explainer")) return "describer";
+            if (r.includes("artist")) return "drawer";
+            // fallback to provided lowercase text
+            return r;
+        };
+
         lobbyHub.onAssignedRoleHandler((role) => {
             console.debug("[hub] AssignedRole", role);
-            setMyRole(role);
-            setStatus(`Assigned role: ${role}`);
+            const localRole = normalizeRole(role);
+            setMyRole(localRole);
+            setStatus(`Assigned role: ${localRole ?? role}`);
+
+            // record own role in roles map if we have a username
+            if (name) {
+                setRoles(prev => ({ ...prev, [name]: localRole ?? role }));
+            }
         });
 
         lobbyHub.onReceiveImageHandler((img) => {
@@ -43,10 +60,22 @@ export default function Lobby() {
         lobbyHub.onRolesAssignedHandler((describer, drawer) => {
             console.debug("[hub] RolesAssigned", describer, drawer);
             setStatus(`Roles assigned - describer: ${describer}, drawer: ${drawer}`);
+            setRoles(prev => ({ ...prev, [describer]: "describer", [drawer]: "drawer" }));
         });
 
         // no auto-start here; we'll start when needed
-    }, []);
+    }, [name]);
+
+    // keep roles mapping in sync with current players (remove stale entries)
+    useEffect(() => {
+        setRoles(prev => {
+            const filtered: Record<string, string> = {};
+            for (const p of players) {
+                if (prev[p]) filtered[p] = prev[p];
+            }
+            return filtered;
+        });
+    }, [players]);
 
     const handleCreate = async () => {
         if (!name) { setStatus("Set a name first"); return; }
@@ -110,7 +139,13 @@ export default function Lobby() {
         try {
             await lobbyHub.start();
             const ok = await lobbyHub.assignRoles(lobbyId);
-            setStatus(ok ? "Assigned roles" : "Assigning roles failed");
+            // don't overwrite the RolesAssigned broadcast message — only show an error if server reports failure.
+            if (!ok) {
+                setStatus("Assigning roles failed");
+            } else {
+                // optionally show a transient message while waiting for the broadcast
+                setStatus("Assign roles request sent...");
+            }
             console.debug("AssignRoles result:", ok);
         } catch (err) {
             console.error("Assign roles error", err);
@@ -147,7 +182,16 @@ export default function Lobby() {
 
             <div style={{ marginTop: 8 }}>
                 <strong>Players:</strong>
-                <ul>{players.map(p => <li key={p}>{p}</li>)}</ul>
+                <ul>
+                    {players.map(p => (
+                        <li key={p}>
+                            <div>{p}</div>
+                            <div style={{ fontSize: 12, color: "#666" }}>
+                                Role: {roles[p] ?? "—"}
+                            </div>
+                        </li>
+                    ))}
+                </ul>
             </div>
 
             {myRole === "describer" && imageUrl && (
