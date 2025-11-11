@@ -6,24 +6,25 @@ import UsernameInput from '../components/UsernameInput';
 import SaveButton from '../components/SaveButton';
 import { useAvatarCarousel } from '../hooks/useAvatarCarousel';
 import { AVATAR_STYLES } from '../constants/avatarConstants';
+import { useLobbyName } from "../hooks/useLobbyName";
 
 type Props = {
   selectedAvatar: number | null
-  setSelectedAvatar: (id: number) => void
+  setSelectedAvatar: (id: number | null) => void
   onClose?: () => void
   onSave?: (username: string, avatarId: number) => void
 }
 
 function ChooseAvatarModal({ selectedAvatar, setSelectedAvatar, onClose, onSave }: Props) {
-    const [username, setUsername] = useState('');
-    
+    const { name: username, setName: setUsername } = useLobbyName('');
+
     const {
         getVisibleAvatars,
         nextAvatar,
         prevAvatar,
         selectCurrentAvatar,
         isTransitioning,
-    } = useAvatarCarousel(setSelectedAvatar);
+    } = useAvatarCarousel(setSelectedAvatar as (id:number) => void, selectedAvatar); // pass current selection here
 
     const handleSave = () => {
         if (username.trim() && selectedAvatar && onSave) {
