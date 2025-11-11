@@ -10,6 +10,8 @@ import { useState } from 'react';
 import type { ModalType } from '../constants/homeConstants';
 import { MODAL_ANIMATION_DURATION } from '../constants/homeConstants';
 
+const AVATAR_STORAGE_KEY = 'lobbySelectedAvatar';
+
 /**
  * Hook for managing modal state and animations
  * 
@@ -22,8 +24,17 @@ export function useModalManager() {
   // Whether a modal is currently closing (for animation purposes)
   const [closing, setClosing] = useState(false);
   
-  // Currently selected avatar ID (persists across modal opens/closes)
-  const [selectedAvatar, setSelectedAvatar] = useState<number | null>(null);
+  // Persisted selected avatar id (read from localStorage on init)
+  const [selectedAvatar, setSelectedAvatarState] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(AVATAR_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = parseInt(raw, 10);
+      return Number.isNaN(parsed) ? null : parsed;
+    } catch {
+      return null;
+    }
+  });
 
   /**
    * Close the current modal with animation
@@ -43,6 +54,20 @@ export function useModalManager() {
   const openCreateModal = () => setOpenModal('create');   // Create room modal
   const openJoinModal = () => setOpenModal('join');       // Join room modal
   const openChooseModal = () => setOpenModal('choose');   // Avatar selection modal
+
+  // Wrapped setter that persists to localStorage
+  const setSelectedAvatar = (id: number | null) => {
+    try {
+      if (id === null) {
+        localStorage.removeItem(AVATAR_STORAGE_KEY);
+      } else {
+        localStorage.setItem(AVATAR_STORAGE_KEY, String(id));
+      }
+    } catch {
+      // ignore localStorage errors (private mode, quotas, etc.)
+    }
+    setSelectedAvatarState(id);
+  };
 
   // Return all state and functions for use in components
   return {

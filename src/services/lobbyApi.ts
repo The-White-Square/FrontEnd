@@ -50,3 +50,20 @@ export async function getLobbyImage(lobbyId: string): Promise<ImageDto | null> {
     if (!res.ok) return null;
     return (await res.json()) as ImageDto;
 }
+
+/**
+ * Fetch current players for a lobby from the server.
+ * Returns array of player names or null on failure.
+ */
+export async function getLobbyPlayers(lobbyId: string): Promise<string[] | null> {
+    const res = await fetch(`${API_URL}/lobby/${encodeURIComponent(lobbyId)}/players`, {
+        method: "GET",
+        credentials: "include",
+    });
+    if (!res.ok) return null;
+    try {
+        return (await res.json()) as string[];
+    } catch {
+        return null;
+    }
+}

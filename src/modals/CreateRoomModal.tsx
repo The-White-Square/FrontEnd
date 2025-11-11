@@ -1,21 +1,40 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import ExpandButton from '../components/ExpandButton';
+import { useState } from "react";
+import lobbyHub from "../services/lobbyHub";
+import * as api from "../services/lobbyApi";
+import { useLobbyName } from "../hooks/useLobbyName";
 
 type Props = {
   onClose?: () => void
+  selectedAvatar?: number | null
 }
 
-function CreateRoomModal({ onClose = () => {} }: Props) {
-    const [roomName, setRoomName] = useState('');
-    const navigate = useNavigate();
-    
-    const handleCreate = () => {
-        if (roomName.trim()) {
-            // Generate a random room code for the created room
-            const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            navigate(`/game/${roomCode}`);
-            onClose();
+function CreateRoomModal({ onClose = () => {}, selectedAvatar }: Props) {
+    const { name } = useLobbyName('');
+    const [status, setStatus] = useState<string>("");
+
+    const handleCreate = async () => {
+        if (!name || !name.trim()) { setStatus("Set a name first"); return; }
+
+        setStatus("Creating lobby...");
+        try {
+            const res = await api.joinLobby({ LobbyId: "", Username: name.trim(), IconId: selectedAvatar ?? 1 });
+            if (!res.ok) { setStatus("Create failed: " + (res.message ?? "unknown")); return; }
+
+            const code = res.lobbyCode ?? (res.message ?? "");
+            if (!code) { setStatus("Create failed: no code returned"); return; }
+
+            // start hub and add player (match Lobby.tsx behavior)
+            await lobbyHub.start();
+            await lobbyHub.addPlayerToLobby(code, name.trim(), selectedAvatar ?? 1);
+
+            setStatus("Lobby created: " + code);
+            // Do not navigate — leave user on the current page/modal as requested.
+            // If you want the modal to close automatically after creation uncomment:
+            // onClose();
+        } catch (err) {
+            console.error("Create lobby error", err);
+            setStatus("Create failed: " + ((err as any)?.message ?? String(err)));
         }
     };
 
@@ -55,7 +74,7 @@ function CreateRoomModal({ onClose = () => {} }: Props) {
                 ×
             </ExpandButton>
             
-            {/* Title Block - Made Bigger */}
+            {/* Title Block */}
             <div className="modal-title-block" style={{
                 background: '#FF962C',
                 border: '2px solid #DE5C00',
@@ -83,61 +102,30 @@ function CreateRoomModal({ onClose = () => {} }: Props) {
                 </h2>
             </div>
 
-            {/* Input Section */}
-                    <div style={{ marginBottom: '35px' }}>
-                        <label style={{
-                            color: '#8B4513',
-                            fontFamily: "'Jersey 25', sans-serif",
-                            fontSize: '22px',
-                            display: 'block',
-                            marginBottom: '16px',
-                            fontWeight: 'bold'
-                        }}>
-                            Room name:
-                        </label>
-                        <input
-                            type="text"
-                            value={roomName}
-                            onChange={(e) => setRoomName(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '18px 24px',
-                                border: 'none',
-                                borderRadius: '25px',
-                                fontSize: '20px',
-                                fontWeight: 'normal',
-                                background: 'rgba(255,255,255,0.9)',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.1)'
-                            }}
-                            placeholder="Enter room name"
-                        />
-                    </div>
+            {/* Status Message */}
+            {status && <div style={{ textAlign: 'center', color: '#8B4513', marginBottom: 12 }}>{status}</div>}
                     
-                    {/* Create Button */}
-                    <div style={{ textAlign: 'center', marginTop: '15px' }}>
-                        <ExpandButton
-                            onClick={roomName.trim() ? handleCreate : undefined}
-                            style={{
-                                padding: '16px 40px',
-                                background: roomName.trim() 
-                                    ? '#FEC65F'
-                                    : 'rgba(139, 69, 19, 0.3)',
-                                color: roomName.trim() ? '#DA6804' : 'rgba(139, 69, 19, 0.6)',
-                                border: roomName.trim() ? '2px solid #FF9500' : '2px solid rgba(139, 69, 19, 0.2)',
-                                borderRadius: '20px',
-                                fontSize: '24px',
-                                fontFamily: "'Jersey 25', sans-serif",
-                                cursor: roomName.trim() ? 'pointer' : 'not-allowed',
-                                fontWeight: 'normal',
-                                boxShadow: roomName.trim() ? '0 4px 8px rgba(255, 149, 0, 0.3)' : 'none',
-                                opacity: roomName.trim() ? 1 : 0.6
-                            }}
-                        >
-                            Create
-                        </ExpandButton>
-                    </div>
+            {/* Create Button */}
+            <div style={{ textAlign: 'center', marginTop: '15px' }}>
+                <ExpandButton
+                    onClick={handleCreate}
+                    style={{
+                        padding: '16px 40px',
+                        background: '#FEC65F',
+                        color: '#DA6804',
+                        border: '2px solid #FF9500',
+                        borderRadius: '20px',
+                        fontSize: '24px',
+                        fontFamily: "'Jersey 25', sans-serif",
+                        cursor: 'pointer',
+                        fontWeight: 'normal',
+                        boxShadow: '0 4px 8px rgba(255, 149, 0, 0.3)',
+                        opacity: 1
+                    }}
+                >
+                    Create
+                </ExpandButton>
+            </div>
         </div>
     )
 }

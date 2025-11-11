@@ -13,6 +13,8 @@ import FloatingControls from './components/FloatingControls';
 import ModalManager from './components/ModalManager';
 import { useModalManager } from './hooks/useModalManager';
 import { homeStyles } from './styles/homeStyles';
+import { useEffect } from 'react';
+import { useLobbyName } from './hooks/useLobbyName';
 
 /**
  * Home page component with modal management
@@ -35,6 +37,13 @@ function Home() {
     openJoinModal,      // Function to open join room modal
     openChooseModal,    // Function to open avatar selection modal
   } = useModalManager();
+
+  const { setName } = useLobbyName('');
+
+  useEffect(() => {
+    setName('');
+    setSelectedAvatar(null);
+  }, []);
 
   return (
     <BackgroundLayers>

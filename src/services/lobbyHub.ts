@@ -15,6 +15,13 @@ class LobbyHubClient {
     private onReceiveImage?: ReceiveImageHandler;
     private onRolesAssigned?: RolesAssignedHandler;
 
+    // track which lobbies we've already added this client to (prevents duplicate AddPlayerToLobby calls)
+    private joinedLobbies: Set<string> = new Set();
+
+    // track raw handlers registered so we don't register the same callback multiple times
+    // Map<eventName, Set<callback>>
+    private rawHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
+
     // start the connection and attach all known handlers
     async start() {
         if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) return;
@@ -61,12 +68,70 @@ class LobbyHubClient {
         this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
         this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
+        // attach any raw handlers previously registered (idempotent set prevents duplicates)
+        for (const [eventName, callbacks] of this.rawHandlers.entries()) {
+            for (const cb of callbacks) {
+                try {
+                    this.connection.on(eventName, cb);
+                } catch {
+                    // ignore attach errors for robustness
+                }
+            }
+        }
+
         await this.connection.start();
     }
 
-    async addPlayerToLobby(lobbyId: string, playerName: string, iconId = 0) {
+    /**
+     * Add this connection as a player in a lobby.
+     * This function is idempotent for the (connection, lobbyId) pair to avoid
+     * multiple AddPlayerToLobby invocations from the same client/connection.
+     *
+     * If you need to force adding again (for example after a server-side remove),
+     * pass { force: true }.
+     */
+    async addPlayerToLobby(lobbyId: string, playerName: string, iconId = 0, options?: { force?: boolean }) {
         if (!this.connection) await this.start();
+
+        if (!options?.force && this.joinedLobbies.has(lobbyId)) {
+            // already added on this connection - skip duplicate invocation
+            console.debug(`[hub] addPlayerToLobby skipped (already joined)`, lobbyId, playerName);
+            return;
+        }
+
         await this.connection!.invoke("AddPlayerToLobby", lobbyId, playerName, iconId);
+        this.joinedLobbies.add(lobbyId);
+    }
+
+    /**
+     * Ask the hub/server for current players in a lobby.
+     * Fallback when REST endpoint is not present.
+     * Returns array of names or null on error.
+     */
+    async getPlayers(lobbyId: string): Promise<string[] | null> {
+        if (!this.connection) await this.start();
+        try {
+            // server should implement a hub method "GetPlayers" that returns string[]
+            const result = await this.connection!.invoke<string[]>("GetPlayers", lobbyId);
+            return result ?? null;
+        } catch (err) {
+            console.warn("[hub] GetPlayers failed", err);
+            return null;
+        }
+    }
+
+    /**
+     * Optionally allow leaving a lobby (clears internal tracking) so the client can rejoin later.
+     * Not strictly required, but useful for robustness.
+     */
+    async removePlayerFromLobby(lobbyId: string) {
+        if (!this.connection) return;
+        try {
+            await this.connection!.invoke("RemovePlayerFromLobby", lobbyId);
+        } catch {
+            // ignore server errors - still clear local state
+        }
+        this.joinedLobbies.delete(lobbyId);
     }
 
     async assignRoles(lobbyId: string) {
@@ -81,10 +146,28 @@ class LobbyHubClient {
     onReceiveImageHandler(cb: ReceiveImageHandler) { this.onReceiveImage = cb; }
     onRolesAssignedHandler(cb: RolesAssignedHandler) { this.onRolesAssigned = cb; }
 
-    // utility to register arbitrary raw handlers if needed
+    /**
+     * Register arbitrary raw handlers.
+     * Registration is idempotent per callback and callbacks are persisted
+     * so they will be attached when the connection is started.
+     */
     registerRawHandler(eventName: string, cb: (...args: any[]) => void) {
-        if (!this.connection) return;
-        this.connection.on(eventName, cb);
+        // store in map first (idempotent)
+        const set = this.rawHandlers.get(eventName) ?? new Set<(...args: any[]) => void>();
+        if (!set.has(cb)) {
+            set.add(cb);
+            this.rawHandlers.set(eventName, set);
+        }
+
+        // if connection already exists, attach immediately (SignalR will allow multiple attaches;
+        // we prevent duplicates via the Set above)
+        if (this.connection) {
+            try {
+                this.connection.on(eventName, cb);
+            } catch {
+                // ignore attach errors
+            }
+        }
     }
 }
 

@@ -1,20 +1,43 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ExpandButton from '../components/ExpandButton';
+import { useLobbyName } from "../hooks/useLobbyName";
+import lobbyHub from "../services/lobbyHub";
+import * as api from "../services/lobbyApi";
 
 type Props = {
     onClose?: () => void
+    selectedAvatar?: number | null
 }
 
-function JoinRoomModal({ onClose }: Props) {
+function JoinRoomModal({ onClose, selectedAvatar }: Props) {
     const [roomCode, setRoomCode] = useState('');
     const navigate = useNavigate();
+    const { name } = useLobbyName('');
+    const [status, setStatus] = useState<string>("");
 
-    const handleJoin = () => {
-        if (roomCode.trim()) {
-            // Navigate to drawing page with room code
-            navigate(`/game/${roomCode}`);
+    const handleJoin = async () => {
+        if (!roomCode.trim()) { setStatus("Enter room code"); return; }
+        if (!name || !name.trim()) { setStatus("Set a name first"); return; }
+
+        setStatus("Joining lobby...");
+        try {
+            const code = roomCode.trim();
+            const res = await api.joinLobby({ LobbyId: code, Username: name.trim(), IconId: selectedAvatar ?? 1 });
+            if (!res.ok) { setStatus("Join failed: " + (res.message ?? "unknown")); return; }
+
+            // start hub and add player
+            await lobbyHub.start();
+            await lobbyHub.addPlayerToLobby(code, name.trim(), selectedAvatar ?? 1);
+
+            setStatus("Joined lobby " + code);
+
+            // navigate to Lobby page and pass lobby code in state
+            navigate('/lobby', { state: { lobbyCode: code } });
             onClose?.();
+        } catch (err) {
+            console.error("Join lobby error", err);
+            setStatus("Join failed: " + ((err as any)?.message ?? String(err)));
         }
     };
 
@@ -82,7 +105,7 @@ function JoinRoomModal({ onClose }: Props) {
                 </h2>
             </div>
 
-            {/* Input Section */}
+            {/* Room Code Input */}
             <div style={{ marginBottom: '35px' }}>
                 <label style={{
                     color: '#8B4513',
@@ -114,6 +137,9 @@ function JoinRoomModal({ onClose }: Props) {
                 />
             </div>
 
+            {/* Status Message */}
+            {status && <div style={{ textAlign: 'center', color: '#8B4513', marginBottom: 12 }}>{status}</div>}
+
             {/* Join Button */}
             <div style={{ textAlign: 'center', marginTop: '15px' }}>
                 <ExpandButton
@@ -141,4 +167,4 @@ function JoinRoomModal({ onClose }: Props) {
     )
 }
 
-export default JoinRoomModal
+export default JoinRoomModal;

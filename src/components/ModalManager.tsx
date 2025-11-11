@@ -23,13 +23,19 @@ function ModalManager({
   return (
     <ModalWrapper closing={closing} onClose={onClose}>
       {openModal === 'create' && (
-        <CreateRoomModal 
+        <CreateRoomModal
           onClose={onClose}
+          selectedAvatar={selectedAvatar}
         />
       )}
-      {openModal === 'join' && <JoinRoomModal onClose={onClose} />}
+      {openModal === 'join' && (
+        <JoinRoomModal
+          onClose={onClose}
+          selectedAvatar={selectedAvatar}
+        />
+      )}
       {openModal === 'choose' && (
-        <ChooseAvatarModal 
+        <ChooseAvatarModal
           selectedAvatar={selectedAvatar}
           setSelectedAvatar={setSelectedAvatar}
           onClose={onClose}

@@ -15,6 +15,7 @@ import { lazy, Suspense } from 'react'
 const Home = lazy(() => import('./Home')) // landing page with room creation/joining
 const DrawingPage = lazy(() => import('./DrawingPage')) // main drawing game interface
 const Lobby = lazy(() => import('./components/Lobby')) // lobby UI for create/join / role assignment
+const DescriberPage = lazy(() => import('./DescriberPage')) // describer view (file: src/DescriberPage.tsx)
 
 function App() {
     return (
@@ -32,6 +33,8 @@ function App() {
 
                         {/* Drawing game route - includes room code parameter */}
                         <Route path="/game/:roomCode" element={<DrawingPage />} />
+                        <Route path="/describer" element={<DescriberPage />} />
+                        <Route path="/painter" element={<DrawingPage />} />
                     </Routes>
                 </Suspense>
             </BrowserRouter>

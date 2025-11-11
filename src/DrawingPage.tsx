@@ -67,13 +67,25 @@ const DrawingPage = () => {
   const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
   const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
   
+  // Scale factor: 0.8 = 20% smaller
+  const scale = 0.7;
+  const scaledStyle: React.CSSProperties = {
+    transform: `scale(${scale})`,
+    transformOrigin: 'top center',
+    // Prevent scaled element from collapsing in height/width layout:
+    width: `${100 / scale}%`,
+    // push the scaled layout down so it sits below the floating controls
+    marginTop: '260px',
+  };
+
   return (
     <BackgroundLayers>
-      {/* Floating controls in top-left corner */}
+      {/* Floating controls in top-left corner - NOT SCALED */}
       <FloatingControls />
       
       <div className="drawing-page">
-        <div className="game-container">
+        {/* Apply visual scale only to the game container so FloatingControls stays unchanged */}
+        <div className="game-container" style={scaledStyle}>
           {/* Main content area with 3-column layout */}
           <div className="main-content">
             {/* Left Sidebar - Chat System */}
