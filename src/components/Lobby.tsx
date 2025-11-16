@@ -305,7 +305,6 @@ export default function Lobby() {
 
                 <div style={{ marginTop: 8 }}>
                     <button onClick={handleGetImage}>GET /lobby/{lobbyId}/image</button>
-                    <button onClick={handleAssignRoles} style={{ marginLeft: 8 }}>Assign Roles (hub)</button>
                 </div>
 
                 <div style={{ marginTop: 12 }}>
@@ -338,7 +337,7 @@ export default function Lobby() {
 
                 {/* START button centered at bottom (uses Home mainActionButtonStyle) */}
                 <div style={startButtonWrap}>
-                    <button style={{ ...mainActionButtonStyle, minWidth: 160, padding: "10px 36px" }}>START</button>
+                    <button onClick={handleAssignRoles} style={{ ...mainActionButtonStyle, minWidth: 160, padding: "10px 36px" }}>START</button>
                 </div>
 
                 {myRole === "describer" && imageUrl && (

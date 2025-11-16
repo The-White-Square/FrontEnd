@@ -48,7 +48,6 @@ const DrawingPage = () => {
   const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
   const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
   
-  // Scale factor: 0.8 = 20% smaller
   const scale = 0.7;
   const scaledStyle: React.CSSProperties = {
     transform: `scale(${scale})`,
