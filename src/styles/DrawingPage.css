@@ -50,6 +50,7 @@
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 8px 25px rgba(139, 69, 19, 0.3);
+  flex-shrink: 0; /* prevent collapsing into a thin line */
 }
 
 .chat-messages {
@@ -419,6 +420,52 @@
   box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
 }
 
+/* Describer: make each label position relative to its own frame, not the whole row */
+.frame-stack {
+  position: relative;     /* key: anchors .frame-label--abs to this box */
+  width: 700px;           /* matches FRAME_SIZE */
+  flex: 0 0 auto;         /* don't shrink */
+  display: block;
+}
+
+/* Base label styles (the bar) */
+.frame-label {
+  display: flex;                 /* use flex for centering */
+  align-items: center;           /* vertical center */
+  justify-content: center;       /* horizontal center */
+  height: 44px;                  /* fixed bar height (content) */
+  padding: 0 16px;               /* horizontal padding only */
+  text-align: center;
+  line-height: 1;                /* let flex handle vertical centering */
+
+  /* existing visual styles */
+  background: #8B4513;
+  color: #FFFFFF;
+  border: 4px solid #8B4513;
+  border-radius: 20px;
+  box-shadow: 0 8px 25px rgba(139, 69, 19, 0.3);
+  box-sizing: border-box;
+  font-family: 'Jersey 25', sans-serif;
+  font-size: 22px;
+  pointer-events: none;
+}
+
+/* Position the bar above the square, not overlapping the top border */
+.frame-label--abs {
+  position: absolute;
+  top: -56px;   /* adjust as needed (-56 keeps a small gap) */
+  left: 0;
+  width: 100%;
+  z-index: 3;
+}
+
+/* Ensure chat aligns with square top (no extra vertical offset) */
+.main-content {
+  align-items: flex-start;
+}
+
+
+
 /* Responsive Design */
 @media (max-width: 1200px) {
   .main-content {
@@ -591,16 +638,6 @@
     background: linear-gradient(to right, #8B4513 0%, #CD853F 20%, #F4A460 80%, #FFE4B5 100%);
     border-radius: 8px;
     border: 2px solid #654321;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
-  }
-  
-  .brush-size-thumb {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%) translateX(-50%);
-    width: 22px;
-    height: 22px;
   }
   
   .bottom-controls {
@@ -612,23 +649,6 @@
   
   .chat-input-container {
     width: 60%;
-  }
-  
-  .chat-input {
-    padding: 12px 18px;
-    font-size: 16px;
-  }
-  
-  .control-button {
-    width: 50px;
-    height: 50px;
-    font-size: 18px;
-  }
-  
-  .clear-button {
-    padding: 12px 20px;
-    font-size: 16px;
-    min-width: 100px;
   }
 }
 
@@ -724,8 +744,6 @@
     background: linear-gradient(to right, #8B4513 0%, #CD853F 20%, #F4A460 80%, #FFE4B5 100%);
     border-radius: 7px;
     border: 2px solid #654321;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
   }
   
   .brush-size-thumb {
@@ -768,11 +786,6 @@
     width: 45px;
     height: 45px;
     font-size: 16px;
-  }
-  
-  .canvas-controls {
-    order: 3;
-    width: 100%;
   }
   
   .clear-button {

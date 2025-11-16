@@ -1,11 +1,3 @@
-/**
- * Drawing Page Component
- * 
- * The main game interface where players draw and interact.
- * Features a canvas for drawing, chat system, tool selection,
- * and responsive layout that adapts to different screen sizes.
- */
-
 import { useRef, useCallback } from 'react';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
@@ -19,17 +11,6 @@ import DrawingControls from './components/DrawingControls';
 import { useDrawingState } from './hooks/useDrawingState';
 import './styles/DrawingPage.css';
 
-/**
- * Main drawing game interface
- * 
- * Provides a complete drawing environment with:
- * - Interactive canvas using Konva for drawing
- * - Chat system for player communication
- * - Tool selection (brush, eraser, fill)
- * - Color palette and brush size controls
- * - Undo/redo/clear functionality
- * - Responsive layout for different screen sizes
- */
 const DrawingPage = () => {
   // Reference to canvas component for direct method calls
   const canvasRef = useRef<CanvasRef>(null);
