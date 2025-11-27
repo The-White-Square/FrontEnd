@@ -6,6 +6,7 @@ export type PlayerJoinedHandler = (lobbyId: string, playerName: string, iconId?:
 export type AssignedRoleHandler = (role: string) => void;
 export type ReceiveImageHandler = (imageUrl: string) => void;
 export type RolesAssignedHandler = (describerName: string, drawerName: string) => void;
+export type ReceiveMessageHandler = (message: string, playerName: string) => void;
 
 class LobbyHubClient {
     private connection?: signalR.HubConnection;
@@ -22,6 +23,7 @@ class LobbyHubClient {
     // Map<eventName, Set<callback>>
     private rawHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
 
+    private onReceiveMessage?: ReceiveMessageHandler;
     // start the connection and attach all known handlers
     async start() {
         if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) return;
@@ -68,6 +70,10 @@ class LobbyHubClient {
         this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
         this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
+        this.connection.on("LobbyMessage", (message: string, playerName: string) => {
+            this.onReceiveMessage?.(message, playerName);
+        });
+        
         // attach any raw handlers previously registered (idempotent set prevents duplicates)
         for (const [eventName, callbacks] of this.rawHandlers.entries()) {
             for (const cb of callbacks) {
@@ -139,13 +145,18 @@ class LobbyHubClient {
         return await this.connection!.invoke<boolean>("AssignRoles", lobbyId);
     }
 
+    async sendChatMessage(lobbyId: string, message: string, playerName: string) {
+        if (!this.connection) await this.start();
+        await this.connection!.invoke("SendLobbyMessage", lobbyId, message, playerName);
+    }
+
     // public registration helpers for the UI
     onPlayerJoinedHandler(cb: PlayerJoinedHandler) { this.onPlayerJoined = cb; }
     onPlayersStateHandler(cb: (names: string[]) => void) { this.onPlayersState = cb; }
     onAssignedRoleHandler(cb: AssignedRoleHandler) { this.onAssignedRole = cb; }
     onReceiveImageHandler(cb: ReceiveImageHandler) { this.onReceiveImage = cb; }
     onRolesAssignedHandler(cb: RolesAssignedHandler) { this.onRolesAssigned = cb; }
-
+    onReceiveMessageHandler(cb: ReceiveMessageHandler) { this.onReceiveMessage = cb; }
     /**
      * Register arbitrary raw handlers.
      * Registration is idempotent per callback and callbacks are persisted

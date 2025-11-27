@@ -52,16 +52,7 @@ export function useLobbyName(initialName = "") {
             } catch {
                 // ignore sessionStorage errors
             }
-
-            // optional server/hub notifications (unchanged)
-            const res = await api.updatePlayerName?.(newName);
-            if (res?.ok) {
-                setStatus("Name updated");
-            } else {
-                setStatus("Failed to update name");
-            }
-
-            await lobbyHub.sendPlayerName?.(newName);
+            
         } catch (err) {
             console.error("Error updating name", err);
             setStatus("Error: " + ((err as any)?.message ?? String(err)));

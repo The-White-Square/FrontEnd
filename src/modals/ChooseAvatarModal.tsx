@@ -27,8 +27,12 @@ function ChooseAvatarModal({ selectedAvatar, setSelectedAvatar, onClose, onSave 
     } = useAvatarCarousel(setSelectedAvatar as (id:number) => void, selectedAvatar); // pass current selection here
 
     const handleSave = () => {
-        if (username.trim() && selectedAvatar && onSave) {
-            onSave(username.trim(), selectedAvatar);
+        if (username.trim() && selectedAvatar) {
+            sessionStorage.setItem('avatarId', selectedAvatar.toString());
+
+            if (onSave) {
+                onSave(username.trim(), selectedAvatar);
+            }
         }
         if (onClose) onClose();
     };

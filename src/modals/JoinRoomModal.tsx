@@ -30,6 +30,10 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
             await lobbyHub.start();
             await lobbyHub.addPlayerToLobby(code, name.trim(), selectedAvatar ?? 1);
 
+            // Save lobby ID and avatar ID to sessionStorage
+            sessionStorage.setItem('lobbyId', code);
+            sessionStorage.setItem('avatarId', (selectedAvatar ?? 1).toString());
+
             setStatus("Joined lobby " + code);
 
             // navigate to Lobby page and pass lobby code in state

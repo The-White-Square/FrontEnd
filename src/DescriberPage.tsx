@@ -8,6 +8,7 @@ import { useDrawingState } from './hooks/useDrawingState';
 import * as api from './services/lobbyApi';
 import lobbyHub from './services/lobbyHub';
 import './styles/DrawingPage.css';
+import {useLobbyName} from "./hooks/useLobbyName";
 
 type NavState = {
   lobbyId?: string;
@@ -19,8 +20,8 @@ const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7
 const FRAME_SIZE = 700;
 
 export default function DescriberPage() {
-  const location = useLocation();
-  const { lobbyId } = (location.state as NavState) ?? {};
+  const lobbyId = sessionStorage.getItem('lobbyId') || '';
+  const { name: username } = useLobbyName('');
 
   const {
     chatMessages,
@@ -28,7 +29,7 @@ export default function DescriberPage() {
     setChatInput,
     sendMessage,
     players,
-  } = useDrawingState();
+  } = useDrawingState(lobbyId, username);
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
