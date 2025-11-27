@@ -8,13 +8,13 @@
 
 import { useState, useEffect } from 'react';
 import type { ChatMessage, Player } from '../types/drawingTypes';
-
+import LobbyHubClient from '../services/lobbyHub';
 /**
  * Hook for managing drawing game state
  * 
  * @returns Object containing all drawing game state and functions
  */
-export function useDrawingState() {
+export function useDrawingState(lobbyId: string, currentPlayerName: string) {
   // === Drawing Tool State ===
   
   // Currently selected color for drawing (hex format)
@@ -72,6 +72,19 @@ export function useDrawingState() {
    * when the viewport width crosses the 900px threshold.
    */
   useEffect(() => {
+    LobbyHubClient.start();
+
+    LobbyHubClient.onReceiveMessageHandler((message, playerName) => {
+      const newMessage: ChatMessage = {
+        id: Date.now().toString(),
+        playerId: playerName === currentPlayerName ? '1' : '2', // You might want better ID logic
+        message: message,
+        timestamp: new Date(),
+        isGuess: true
+      };
+
+      setChatMessages(prev => [...prev, newMessage]);
+    });
     /**
      * Check current screen size and update state
      */
@@ -95,26 +108,20 @@ export function useDrawingState() {
    * Send a new chat message
    * 
    * Creates a new message from the current input text and adds it
-   * to the message history. Clears the input field after sending.
+   * to the message history.
    */
-  const sendMessage = () => {
-    // Don't send empty messages
+  const sendMessage = async () => {
     if (!chatInput.trim()) return;
-    
-    // Create new message object
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(), // Simple ID generation
-      playerId: '1',             // Current player ID
-      message: chatInput,        // Message content
-      timestamp: new Date(),     // Current timestamp
-      isGuess: true             // Mark as a guess attempt
-    };
-    
-    // Add message to history
-    setChatMessages(prev => [...prev, newMessage]);
-    
-    // Clear input field
-    setChatInput('');
+
+    try {
+      // Send via SignalR
+      await LobbyHubClient.sendChatMessage(lobbyId, chatInput, currentPlayerName);
+
+      // Clear input
+      setChatInput('');
+    } catch (err) {
+      console.error('Error sending message:', err);
+    }
   };
 
   // === Return Hook Interface ===

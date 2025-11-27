@@ -9,11 +9,15 @@ import ChatWindow from './components/ChatWindow';
 import ChatInput from './components/ChatInput';
 import DrawingControls from './components/DrawingControls';
 import { useDrawingState } from './hooks/useDrawingState';
+import { useLobbyName } from './hooks/useLobbyName';
 import './styles/DrawingPage.css';
 
 const DrawingPage = () => {
   // Reference to canvas component for direct method calls
   const canvasRef = useRef<CanvasRef>(null);
+
+  const lobbyId = sessionStorage.getItem('lobbyId') || '';
+  const { name: username } = useLobbyName('');
   
   // All drawing game state from custom hook
   const {
@@ -30,7 +34,7 @@ const DrawingPage = () => {
     sendMessage,       // Function to send chat message
     players,           // List of game players
     isSmallScreen,     // Responsive layout flag
-  } = useDrawingState();
+  } = useDrawingState(lobbyId, username);
 
   /**
    * Canvas save state callback
