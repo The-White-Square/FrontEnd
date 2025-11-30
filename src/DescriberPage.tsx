@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
 import ChatWindow from './components/ChatWindow';
@@ -8,13 +7,8 @@ import { useDrawingState } from './hooks/useDrawingState';
 import * as api from './services/lobbyApi';
 import lobbyHub from './services/lobbyHub';
 import './styles/DrawingPage.css';
-import {useLobbyName} from "./hooks/useLobbyName";
-
-type NavState = {
-  lobbyId?: string;
-  name?: string;
-  iconId?: number;
-};
+import { useLobbyName } from "./hooks/useLobbyName";
+import DrawingCanvas from './components/DrawingCanvas';
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7179';
 const FRAME_SIZE = 700;
@@ -48,7 +42,7 @@ export default function DescriberPage() {
     };
 
     const init = async () => {
-      try { await lobbyHub.start(); } catch { /* ignore */ }
+      try { await lobbyHub.start(); } catch { }
       lobbyHub.onReceiveImageHandler(handleReceiveImage);
 
       if (lobbyId) {
@@ -74,7 +68,6 @@ export default function DescriberPage() {
     marginTop: '260px',
   }), [scale]);
 
-  // Square frame style (restore full border and full rounding)
   const frameBoxStyle: React.CSSProperties = {
     background: 'white',
     borderRadius: 20,
@@ -84,6 +77,9 @@ export default function DescriberPage() {
     height: FRAME_SIZE,
     overflow: 'hidden',
     position: 'relative',
+    display: 'flex',
+    alignItems: 'stretch',
+    justifyContent: 'stretch'
   };
 
   return (
@@ -92,26 +88,25 @@ export default function DescriberPage() {
       <div className="drawing-page">
         <div className="game-container" style={scaledStyle}>
           <div className="main-content" style={{ alignItems: 'flex-start' }}>
-            {/* Chat aligned with top of squares */}
             <div className="chat-sidebar">
               <ChatWindow messages={chatMessages} players={players} />
             </div>
 
-            {/* Two frame stacks */}
             <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+              {/* Live streamed canvas from Artist */}
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
                 <div className="frame-label frame-label--abs">Live Preview</div>
                 <div style={frameBoxStyle}>
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: '#f8f8f8',
-                    }}
+                  <DrawingCanvas
+                    lobbyId={lobbyId}
+                    role="Explainer"
+                    width={FRAME_SIZE}
+                    height={FRAME_SIZE}
                   />
                 </div>
               </div>
 
+              {/* Original reference image */}
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
                 <div className="frame-label frame-label--abs">Original</div>
                 <div style={frameBoxStyle}>
@@ -147,13 +142,13 @@ export default function DescriberPage() {
             </div>
           </div>
 
-          <div className="bottom-controls" style={{ justifyContent: 'flex-start' }}>
-            <ChatInput
-              value={chatInput}
-              onChange={setChatInput}
-              onSend={sendMessage}
-            />
-          </div>
+            <div className="bottom-controls" style={{ justifyContent: 'flex-start' }}>
+              <ChatInput
+                value={chatInput}
+                onChange={setChatInput}
+                onSend={sendMessage}
+              />
+            </div>
         </div>
       </div>
     </BackgroundLayers>
