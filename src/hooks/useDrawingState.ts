@@ -1,4 +1,4 @@
-/**
+ /**
  * Drawing State Hook
  * 
  * Custom React hook that manages all state related to the drawing game page.
@@ -72,9 +72,12 @@ export function useDrawingState(lobbyId: string, currentPlayerName: string) {
    * when the viewport width crosses the 900px threshold.
    */
   useEffect(() => {
-    LobbyHubClient.start();
+    let mounted = true;
 
-    LobbyHubClient.onReceiveMessageHandler((message, playerName) => {
+    const handleHubMessage = (message: string, playerName: string) => {
+      // guard in case the hook unmounted
+      if (!mounted) return;
+
       const newMessage: ChatMessage = {
         id: Date.now().toString(),
         playerId: playerName === currentPlayerName ? '1' : '2', // You might want better ID logic
@@ -84,23 +87,45 @@ export function useDrawingState(lobbyId: string, currentPlayerName: string) {
       };
 
       setChatMessages(prev => [...prev, newMessage]);
-    });
-    /**
-     * Check current screen size and update state
-     */
+    };
+
     const checkScreenSize = () => {
       setIsSmallScreen(window.innerWidth <= 900);
     };
-    
-    // Check initial screen size
+
+    // Register handler before starting the connection, then start and join lobby.
+    (async () => {
+      try {
+        // register the handler first so incoming events have a callback ready
+        LobbyHubClient.onReceiveMessageHandler(handleHubMessage);
+
+        // start connection (await so errors surface)
+        await LobbyHubClient.start();
+
+        // ensure server knows this connection is in the lobby (so it receives LobbyMessage)
+        if (lobbyId) {
+          try {
+            await LobbyHubClient.addPlayerToLobby(lobbyId, currentPlayerName);
+          } catch (err) {
+            // non-fatal, but log for debugging
+            console.warn('[hub] addPlayerToLobby failed', err);
+          }
+        }
+      } catch (err) {
+        console.error('[hub] start failed', err);
+      }
+    })();
+
+    // Check initial screen size and attach resize listener
     checkScreenSize();
-    
-    // Listen for window resize events
     window.addEventListener('resize', checkScreenSize);
-    
-    // Cleanup listener on component unmount
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
+
+    // Cleanup on unmount
+    return () => {
+      mounted = false;
+      window.removeEventListener('resize', checkScreenSize);
+    };
+  }, [lobbyId, currentPlayerName]);
   
   // === Chat Functions ===
   
