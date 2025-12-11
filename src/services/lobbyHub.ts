@@ -7,6 +7,7 @@ export type AssignedRoleHandler = (role: string) => void;
 export type ReceiveImageHandler = (imageUrl: string) => void;
 export type RolesAssignedHandler = (describerName: string, drawerName: string) => void;
 export type ReceiveMessageHandler = (message: string, playerName: string, iconId: number) => void;
+export type GoToFinalHandler = () => void;
 
 class LobbyHubClient {
     private connection?: signalR.HubConnection;
@@ -24,6 +25,8 @@ class LobbyHubClient {
     private rawHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
 
     private onReceiveMessage?: ReceiveMessageHandler;
+    private onGoToFinal?: GoToFinalHandler;
+
     // start the connection and attach all known handlers
     async start() {
         if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) return;
@@ -38,12 +41,16 @@ class LobbyHubClient {
             let lobbyId: string = "";
             let playerName: string = "";
             let iconId: number | undefined = undefined;
-        
-            if (typeof args[0] === "string") lobbyId = args[0];
-            if (typeof args[1] === "string") playerName = args[1];
-            if (typeof args[2] === "number") iconId = args[2];
 
-            // normalize empty/undefined to empty string so UI doesn't push undefined
+            if (args.length === 1 && typeof args[0] === "string") {
+                playerName = args[0];
+            } else {
+                if (typeof args[0] === "string") lobbyId = args[0];
+                if (typeof args[1] === "string") playerName = args[1];
+                if (typeof args[2] === "number") iconId = args[2];
+                if (!playerName && typeof args[0] === "string") playerName = args[0];
+            }
+
             playerName = playerName ?? "";
             lobbyId = lobbyId ?? "";
 
@@ -62,7 +69,22 @@ class LobbyHubClient {
             console.debug("Message to lobby:", message, playerName, iconId);
             this.onReceiveMessage?.(message, playerName, iconId);
         });
-        
+
+        // explicit GoToFinal handler for reliable navigation
+        this.connection.on("GoToFinal", () => {
+            // prefer explicit handler if set, otherwise fall back to rawHandlers map
+            if (this.onGoToFinal) {
+                try { this.onGoToFinal(); } catch { /* ignore */ }
+            } else {
+                const callbacks = this.rawHandlers.get("GoToFinal");
+                if (callbacks) {
+                    for (const cb of callbacks) {
+                        try { cb(); } catch { /* ignore individual errors */ }
+                    }
+                }
+            }
+        });
+
         // attach any raw handlers previously registered (idempotent set prevents duplicates)
         for (const [eventName, callbacks] of this.rawHandlers.entries()) {
             for (const cb of callbacks) {
@@ -141,6 +163,17 @@ class LobbyHubClient {
         
     }
 
+    // ask server to broadcast GoToFinal to the lobby
+    async goToFinal(lobbyId: string) {
+        if (!this.connection) await this.start();
+        try {
+            await this.connection!.invoke("GoToFinal", lobbyId);
+        } catch (err) {
+            console.warn("[hub] goToFinal failed", err);
+            throw err;
+        }
+    }
+
     // public registration helpers for the UI
     onPlayerJoinedHandler(cb: PlayerJoinedHandler) { this.onPlayerJoined = cb; }
     onPlayersStateHandler(cb: (names: string[]) => void) { this.onPlayersState = cb; }
@@ -148,6 +181,10 @@ class LobbyHubClient {
     onReceiveImageHandler(cb: ReceiveImageHandler) { this.onReceiveImage = cb; }
     onRolesAssignedHandler(cb: RolesAssignedHandler) { this.onRolesAssigned = cb; }
     onReceiveMessageHandler(cb: ReceiveMessageHandler) { this.onReceiveMessage = cb; }
+
+    // explicit GoToFinal handler setter (preferred)
+    onGoToFinalHandler(cb: GoToFinalHandler) { this.onGoToFinal = cb; }
+
     /**
      * Register arbitrary raw handlers.
      * Registration is idempotent per callback and callbacks are persisted

@@ -1,3 +1,11 @@
+ /**
+ * Drawing State Hook
+ * 
+ * Custom React hook that manages all state related to the drawing game page.
+ * This includes drawing tools, chat functionality, player data, and responsive
+ * layout detection. Centralizes state management for the main game interface.
+ */
+
 import { useState, useEffect } from 'react';
 import type { ChatMessage, Player } from '../types/drawingTypes';
 import LobbyHubClient from '../services/lobbyHub';
@@ -33,7 +41,11 @@ export function useDrawingState(lobbyId: string, currentPlayerName: string, curr
   ];
 
   useEffect(() => {
-    LobbyHubClient.start();
+    let mounted = true;
+
+    const handleHubMessage = (message: string, playerName: string) => {
+      // guard in case the hook unmounted
+      if (!mounted) return;
 
     LobbyHubClient.onPlayersStateHandler((playerData) => {
       if (!playerData) return;
@@ -93,18 +105,54 @@ export function useDrawingState(lobbyId: string, currentPlayerName: string, curr
       };
 
       setChatMessages(prev => [...prev, newMessage]);
-    });
+    };
 
     const checkScreenSize = () => {
       setIsSmallScreen(window.innerWidth <= 900);
     };
 
+    // Register handler before starting the connection, then start and join lobby.
+    (async () => {
+      try {
+        // register the handler first so incoming events have a callback ready
+        LobbyHubClient.onReceiveMessageHandler(handleHubMessage);
+
+        // start connection (await so errors surface)
+        await LobbyHubClient.start();
+
+        // ensure server knows this connection is in the lobby (so it receives LobbyMessage)
+        if (lobbyId) {
+          try {
+            await LobbyHubClient.addPlayerToLobby(lobbyId, currentPlayerName);
+          } catch (err) {
+            // non-fatal, but log for debugging
+            console.warn('[hub] addPlayerToLobby failed', err);
+          }
+        }
+      } catch (err) {
+        console.error('[hub] start failed', err);
+      }
+    })();
+
+    // Check initial screen size and attach resize listener
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
 
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, [currentPlayerName, currentPlayerIconId]);
-
+    // Cleanup on unmount
+    return () => {
+      mounted = false;
+      window.removeEventListener('resize', checkScreenSize);
+    };
+  }, [lobbyId, currentPlayerName]);
+  
+  // === Chat Functions ===
+  
+  /**
+   * Send a new chat message
+   * 
+   * Creates a new message from the current input text and adds it
+   * to the message history.
+   */
   const sendMessage = async () => {
     if (!chatInput.trim()) return;
 
