@@ -4,10 +4,8 @@ import lobbyHub from "../services/lobbyHub";
 import * as api from "../services/lobbyApi";
 import BackgroundLayers from "../components/BackgroundLayers";
 import { mainActionButtonStyle } from "../styles/buttonStyles";
-import { useLobbyName } from "../hooks/useLobbyName";
-import { useAvatarCarousel } from "../hooks/useAvatarCarousel";
-
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? "https://localhost:7179";
+import { useLobbyName } from "../hooks/useLobbyName";
 
 type PlayerItem = { id?: string; displayName: string; iconId?: number };
 
@@ -15,7 +13,6 @@ export default function Lobby() {
     const [lobbyId, setLobbyId] = useState("");
     const { name, setName, status: nameStatus } = useLobbyName("");
     const [iconId, setIconId] = useState(1);
-    const { currentCenterIndex, getVisibleAvatars, nextAvatar, prevAvatar } = useAvatarCarousel(setIconId, iconId);
     const [status, setStatus] = useState("");
     const [players, setPlayers] = useState<PlayerItem[]>([]);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -23,21 +20,24 @@ export default function Lobby() {
 
     const location = useLocation();
     const navigate = useNavigate();
-    const joinedRef = useRef(false);
+    const joinedFromStateRef = useRef(false); // prevent duplicate joinFromState runs (StrictMode/dev)
 
+    // Resolve local avatar asset path for a given icon id (stored in src/assets/avatars)
     const getLocalAvatarSrc = (id?: number): string | null => {
         if (!id) return null;
         try {
+            // file names expected like: src/assets/avatars/avatar1.png
             return new URL(`../assets/avatars/avatar${id}.png`, import.meta.url).toString();
         } catch {
             return null;
         }
     };
 
+    // dedupe helper (unique by displayName)
     const uniquePlayers = (list: PlayerItem[]) => {
         const map = new Map<string, PlayerItem>();
         for (const p of list) {
-            if (!p?.displayName) continue;
+            if (!p || !p.displayName) continue;
             const existing = map.get(p.displayName);
             if (existing) {
                 if (!existing.id && p.id) existing.id = p.id;
@@ -49,6 +49,7 @@ export default function Lobby() {
         return Array.from(map.values());
     };
 
+    // robust extractor for player objects coming from REST/hub
     const toPlayerItem = (it: any): PlayerItem => {
         if (!it) return { displayName: "", iconId: 1 };
         if (typeof it === "string") return { displayName: it, iconId: 1 };
@@ -66,9 +67,11 @@ export default function Lobby() {
         return { id, displayName, iconId: iconIdVal };
     };
 
+    // normalize server/hub payloads (some endpoints return strings array, some objects)
     const normalizePlayers = (list: any[]): PlayerItem[] =>
-        uniquePlayers((list ?? []).map(it => toPlayerItem(it)));
+        uniquePlayers((list ?? []).map((it) => toPlayerItem(it)));
 
+    // attach hub event handlers once when component mounts
     useEffect(() => {
         lobbyHub.onPlayersStateHandler((names) => {
             console.debug("[hub] PlayersState", names);
@@ -85,32 +88,41 @@ export default function Lobby() {
             });
         });
 
+        // When server assigns a role, navigate players to the correct page.
         lobbyHub.onAssignedRoleHandler((role) => {
             console.debug("[hub] AssignedRole", role);
             setMyRole(role);
 
+            // normalize role string and detect which page to navigate to
             const r = (role ?? "").toString().toLowerCase();
             const isDescriber = r.includes("explainer");
             const isDrawer = r.includes("artist");
 
             setStatus(`Assigned role: ${role}`);
 
-            setLobbyId(currentLobbyId => {
-                const stateLobbyCode = (location as any)?.state?.lobbyCode;
-                const code = currentLobbyId || stateLobbyCode || "";
-                const navState = { lobbyId: code, name, iconId };
+            // Determine lobby code: prefer state variable, fallback to location.state
+            const stateLobbyCode = (location as any)?.state?.lobbyCode;
+            const code = lobbyId || stateLobbyCode || "";
 
-                console.debug("[nav] role detection:", { role: r, isDescriber, isDrawer, lobbyId: code });
+            // pass lobby state so pages can use it
+            const navState = { lobbyId: code, name, iconId };
 
-                if (isDrawer && code) {
+            console.debug("[nav] role detection:", { role: r, isDescriber, isDrawer, lobbyId: code });
+
+            if (isDrawer) {
+                // go to DrawingPage route using the lobby code
+                if (code) {
                     navigate(`/game/${encodeURIComponent(code)}`, { state: navState });
-                } else if (isDescriber) {
-                    navigate("/describer", { state: navState });
                 } else {
-                    console.warn("Unknown role received, not navigating:", role);
+                    console.warn("No lobby code available for navigation to drawing page.");
                 }
-                return currentLobbyId;
-            });
+            } else if (isDescriber) {
+                // go to Describer page
+                navigate("/describer", { state: navState });
+            } else {
+                // fallback: stay on lobby but keep role
+                console.warn("Unknown role received, not navigating:", role);
+            }
         });
 
         lobbyHub.onReceiveImageHandler((img) => {
@@ -125,42 +137,45 @@ export default function Lobby() {
             setStatus(`Roles assigned - describer: ${describer}, drawer: ${drawer}`);
         });
 
+        // no auto-start here; we'll start when needed
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [navigate, location]);
+    }, [lobbyId, name, iconId, navigate, location]);
 
+    // helper to fetch authoritative players list from server and apply it
     const refreshPlayersFromServer = async (code: string) => {
         try {
             const list = await api.getLobbyPlayers(code);
-            if (list?.length) {
+            if (list && list.length) {
                 console.debug("[api] Fetched players list (REST)", list);
                 setPlayers(normalizePlayers(list));
                 return;
             }
 
             const hubList = await lobbyHub.getPlayers(code);
-            if (hubList?.length) {
+            if (hubList && hubList.length) {
                 console.debug("[hub] Fetched players list (hub)", hubList);
                 setPlayers(normalizePlayers(hubList));
                 return;
             }
 
-            console.debug("[info] No players list available for", code);
+            console.debug("[info] No authoritative players list available for", code);
         } catch (err) {
             console.warn("Failed to fetch players list", err);
         }
     };
 
+    // If we navigated here with a lobby code in location.state, start hub and add player
+    // after handlers are attached so PlayersState/PlayerJoined events are received.
     useEffect(() => {
-        if (joinedRef.current) return;
-
-        const state = (location as any)?.state ?? {};
+        const state = (location && (location as any).state) ?? {};
         const codeFromState: string | undefined = state.lobbyCode;
         const iconFromState: number | undefined = state.iconId;
 
         if (!codeFromState) return;
 
-        if (players.some(p => p.displayName === name && name !== "")) {
-            joinedRef.current = true;
+        // If we already set the lobbyId to the same code and we have the player in the list,
+        // don't attempt to add again.
+        if (lobbyId === codeFromState && players.some(p => p.displayName === name)) {
             return;
         }
 
@@ -171,54 +186,43 @@ export default function Lobby() {
             }
 
             setLobbyId(codeFromState);
-            if (iconFromState !== undefined) {
-                setIconId(iconFromState);
-            }
             setStatus("Joining lobby...");
 
             try {
+                // Ensure connection is started and we listen for PlayersState BEFORE server broadcasts
                 await lobbyHub.start();
 
-                const finalIconId = iconFromState ?? iconId;
-
-                const res = await api.joinLobby({
-                    LobbyId: codeFromState,
-                    Username: name,
-                    IconId: finalIconId
-                });
-
+                // now call server-side join (so server can persist the player)
+                const res = await api.joinLobby({ LobbyId: codeFromState, Username: name, IconId: iconFromState ?? iconId });
                 if (!res.ok) {
                     setStatus("Join failed: " + (res.message ?? "unknown"));
                     return;
                 }
 
-                await lobbyHub.addPlayerToLobby(codeFromState, name, finalIconId);
+                // tell hub to add this player to lobby (server will broadcast PlayersState/PlayerJoined)
+                await lobbyHub.addPlayerToLobby(codeFromState, name, iconFromState ?? iconId);
+
+                // explicit refresh to ensure we have authoritative list
                 await refreshPlayersFromServer(codeFromState);
 
                 setStatus("Joined lobby " + codeFromState);
-                joinedRef.current = true;
             } catch (err) {
                 console.error("Join from state error", err);
                 setStatus("Join failed: " + ((err as any)?.message ?? String(err)));
             }
         };
 
+        // call async join
         joinFromState();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location]);
 
     const handleGetImage = async () => {
-        if (!lobbyId) {
-            setStatus("No lobby id");
-            return;
-        }
+        if (!lobbyId) { setStatus("No lobby id"); return; }
         setStatus("Searching for lobby image...");
         try {
             const dto = await api.getLobbyImage(lobbyId);
-            if (!dto) {
-                setStatus("No image available");
-                return;
-            }
+            if (!dto) { setStatus("No image available"); return; }
             const absolute = dto.url.startsWith("http") ? dto.url : API_URL + dto.url;
             setImageUrl(absolute);
             setStatus("Image found.");
@@ -230,10 +234,7 @@ export default function Lobby() {
     };
 
     const handleAssignRoles = async () => {
-        if (!lobbyId) {
-            setStatus("No lobby id");
-            return;
-        }
+        if (!lobbyId) { setStatus("No lobby id"); return; }
         try {
             await lobbyHub.start();
             const ok = await lobbyHub.assignRoles(lobbyId);
@@ -294,7 +295,7 @@ export default function Lobby() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div>
-                        <strong>Name:</strong> <span>{name || "ï¿½"}</span>
+                        <strong>Name:</strong> <span>{name || "—"}</span>
                         {nameStatus && <div style={{ fontSize: 12, color: '#666' }}>{nameStatus}</div>}
                     </div>
                     <label style={{ marginLeft: 8 }}>
