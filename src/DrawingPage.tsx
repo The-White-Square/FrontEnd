@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
 import Canvas, { type CanvasRef } from './components/Canvas';
@@ -11,6 +11,7 @@ import ChatInput from './components/ChatInput';
 import DrawingControls from './components/DrawingControls';
 import { useDrawingState } from './hooks/useDrawingState';
 import { useLobbyName } from './hooks/useLobbyName';
+import { useAvatarCarousel } from './hooks/useAvatarCarousel';
 import './styles/DrawingPage.css';
 import lobbyHub from './services/lobbyHub';
 
@@ -30,30 +31,39 @@ function ensureRoundEndTimestamp(lobbyId: string): number {
   return newTs;
 }
 
+type NavState = {
+  lobbyId?: string;
+  name?: string;
+  iconId?: number;
+};
+
 const DrawingPage = () => {
-  // Reference to canvas component for direct method calls
   const canvasRef = useRef<CanvasRef>(null);
+  const location = useLocation();
+  const state = (location as any)?.state ?? {} as NavState;
   const navigate = useNavigate();
 
-  const lobbyId = sessionStorage.getItem('lobbyId') || '';
+  const lobbyId = state.lobbyId || sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
-  
-  // All drawing game state from custom hook
+
+  const [iconId, setIconId] = useState(state.iconId ?? 1);
+  useAvatarCarousel(setIconId, state.iconId ?? null);
+
   const {
-    selectedColor,     // Current drawing color
-    setSelectedColor,  // Function to change color
-    brushSize,         // Current brush size
-    setBrushSize,      // Function to change brush size
-    selectedTool,      // Current tool (brush/eraser/fill)
-    setSelectedTool,   // Function to change tool
-    colors,            // Available color palette
-    chatMessages,      // Chat message history
-    chatInput,         // Current chat input text
-    setChatInput,      // Function to update chat input
-    sendMessage,       // Function to send chat message
-    players,           // List of game players
-    isSmallScreen,     // Responsive layout flag
-  } = useDrawingState(lobbyId, username);
+    selectedColor,
+    setSelectedColor,
+    brushSize,
+    setBrushSize,
+    selectedTool,
+    setSelectedTool,
+    colors,
+    chatMessages,
+    chatInput,
+    setChatInput,
+    sendMessage,
+    players,
+    isSmallScreen,
+  } = useDrawingState(lobbyId, username, iconId);
 
   useEffect(() => {
     // Ensure this client listens for the server "GoToFinal" broadcast and
@@ -92,14 +102,12 @@ const DrawingPage = () => {
    * The actual implementation is handled inside the Canvas component.
    */
   const handleSaveState = useCallback(() => {
-    // This function is called when the canvas state should be saved
-    // The actual implementation is handled by the Canvas component
+    // Canvas state save is handled by Canvas component
   }, []);
 
-  // Canvas control functions that call methods on the canvas component
-  const handleUndo = () => canvasRef.current?.undo();   // Undo last action
-  const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
-  const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
+  const handleUndo = () => canvasRef.current?.undo();
+  const handleRedo = () => canvasRef.current?.redo();
+  const handleClear = () => canvasRef.current?.clear();
   
   const scale = 0.7;
   const scaledStyle: React.CSSProperties = {

@@ -17,6 +17,7 @@ export interface ImageDto {
 }
 
 export async function joinLobby(request: JoinRequest): Promise<{ ok: boolean; lobbyCode?: string; message?: string }> {
+    console.debug("send to joinLobby", request);
     const res = await fetch(`${API_URL}/lobby/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

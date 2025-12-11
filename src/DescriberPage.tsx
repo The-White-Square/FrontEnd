@@ -8,7 +8,8 @@ import { useDrawingState } from './hooks/useDrawingState';
 import * as api from './services/lobbyApi';
 import lobbyHub from './services/lobbyHub';
 import './styles/DrawingPage.css';
-import {useLobbyName} from "./hooks/useLobbyName";
+import { useLobbyName } from "./hooks/useLobbyName";
+import { useAvatarCarousel } from "./hooks/useAvatarCarousel";
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7179';
 const FRAME_SIZE = 700;
@@ -30,9 +31,15 @@ function ensureRoundEndTimestamp(lobbyId: string): number {
 }
 
 export default function DescriberPage() {
-  const lobbyId = sessionStorage.getItem('lobbyId') || '';
+  const location = useLocation();
+  const state = (location as any)?.state ?? {} as NavState;
+
+  const lobbyId = state.lobbyId || sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
   const navigate = useNavigate();
+
+  const [iconId, setIconId] = useState(state.iconId ?? 2);
+  const {} = useAvatarCarousel(setIconId, iconId);
 
   const {
     chatMessages,
@@ -40,7 +47,7 @@ export default function DescriberPage() {
     setChatInput,
     sendMessage,
     players,
-  } = useDrawingState(lobbyId, username);
+  } = useDrawingState(lobbyId, username, iconId);
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
