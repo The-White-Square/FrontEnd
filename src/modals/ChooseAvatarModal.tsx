@@ -29,7 +29,7 @@ function ChooseAvatarModal({ selectedAvatar, setSelectedAvatar, onClose, onSave 
     const handleSave = () => {
         if (username.trim() && selectedAvatar) {
             sessionStorage.setItem('avatarId', selectedAvatar.toString());
-
+            
             if (onSave) {
                 onSave(username.trim(), selectedAvatar);
             }

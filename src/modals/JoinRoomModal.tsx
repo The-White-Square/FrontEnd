@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ExpandButton from '../components/ExpandButton';
 import { useLobbyName } from "../hooks/useLobbyName";
+import { useAvatarCarousel } from "../hooks/useAvatarCarousel";
 import lobbyHub from "../services/lobbyHub";
 import * as api from "../services/lobbyApi";
 
@@ -15,29 +16,43 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
     const navigate = useNavigate();
     const { name } = useLobbyName('');
     const [status, setStatus] = useState<string>("");
+    const [avatarId, setAvatarId] = useState(1);
+
+    useAvatarCarousel(setAvatarId, selectedAvatar ?? null);
 
     const handleJoin = async () => {
-        if (!roomCode.trim()) { setStatus("Enter room code"); return; }
-        if (!name || !name.trim()) { setStatus("Set a name first"); return; }
+        if (!roomCode.trim()) {
+            setStatus("Enter room code");
+            return;
+        }
+        if (!name || !name.trim()) {
+            setStatus("Set a name first");
+            return;
+        }
 
         setStatus("Joining lobby...");
         try {
             const code = roomCode.trim();
-            const res = await api.joinLobby({ LobbyId: code, Username: name.trim(), IconId: selectedAvatar ?? 1 });
-            if (!res.ok) { setStatus("Join failed: " + (res.message ?? "unknown")); return; }
+            const res = await api.joinLobby({
+                LobbyId: code,
+                Username: name.trim(),
+                IconId: avatarId
+            });
 
-            // start hub and add player
+            if (!res.ok) {
+                setStatus("Join failed: " + (res.message ?? "unknown"));
+                return;
+            }
+
             await lobbyHub.start();
-            await lobbyHub.addPlayerToLobby(code, name.trim(), selectedAvatar ?? 1);
+            await lobbyHub.addPlayerToLobby(code, name.trim(), avatarId);
 
-            // Save lobby ID and avatar ID to sessionStorage
             sessionStorage.setItem('lobbyId', code);
-            sessionStorage.setItem('avatarId', (selectedAvatar ?? 1).toString());
+            sessionStorage.setItem('avatarId', avatarId.toString());
 
             setStatus("Joined lobby " + code);
 
-            // navigate to Lobby page and pass lobby code in state
-            navigate('/lobby', { state: { lobbyCode: code } });
+            navigate('/lobby', { state: { lobbyCode: code, iconId: avatarId } });
             onClose?.();
         } catch (err) {
             console.error("Join lobby error", err);
@@ -58,7 +73,6 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
             position: 'relative'
         }}>
 
-            {/* Close Button */}
             <ExpandButton
                 onClick={onClose}
                 className="close-button"
@@ -81,7 +95,6 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
                 ×
             </ExpandButton>
 
-            {/* Title Block */}
             <div className="modal-title-block" style={{
                 background: '#FF962C',
                 border: '2px solid #DE5C00',
@@ -109,7 +122,6 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
                 </h2>
             </div>
 
-            {/* Room Code Input */}
             <div style={{ marginBottom: '35px' }}>
                 <label style={{
                     color: '#8B4513',
@@ -141,10 +153,17 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
                 />
             </div>
 
-            {/* Status Message */}
-            {status && <div style={{ textAlign: 'center', color: '#8B4513', marginBottom: 12 }}>{status}</div>}
+            {status && (
+                <div style={{
+                    textAlign: 'center',
+                    color: '#8B4513',
+                    marginBottom: 12,
+                    fontFamily: "'Jersey 25', sans-serif"
+                }}>
+                    {status}
+                </div>
+            )}
 
-            {/* Join Button */}
             <div style={{ textAlign: 'center', marginTop: '15px' }}>
                 <ExpandButton
                     onClick={roomCode.trim() ? handleJoin : undefined}
@@ -168,7 +187,7 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
                 </ExpandButton>
             </div>
         </div>
-    )
+    );
 }
 
 export default JoinRoomModal;

@@ -1,83 +1,92 @@
-/**
- * Drawing State Hook
- * 
- * Custom React hook that manages all state related to the drawing game page.
- * This includes drawing tools, chat functionality, player data, and responsive
- * layout detection. Centralizes state management for the main game interface.
- */
-
 import { useState, useEffect } from 'react';
 import type { ChatMessage, Player } from '../types/drawingTypes';
 import LobbyHubClient from '../services/lobbyHub';
-/**
- * Hook for managing drawing game state
- * 
- * @returns Object containing all drawing game state and functions
- */
-export function useDrawingState(lobbyId: string, currentPlayerName: string) {
-  // === Drawing Tool State ===
-  
-  // Currently selected color for drawing (hex format)
+
+export function useDrawingState(lobbyId: string, currentPlayerName: string, currentPlayerIconId: number) {
   const [selectedColor, setSelectedColor] = useState('#FF0000');
-  
-  // Current brush size (1-60 pixels)
   const [brushSize, setBrushSize] = useState(5);
-  
-  // Currently active drawing tool
   const [selectedTool, setSelectedTool] = useState<'brush' | 'eraser' | 'fill'>('brush');
-  
-  // === Chat System State ===
-  
-  // Array of all chat messages in the current game
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  
-  // Current text in the chat input field
   const [chatInput, setChatInput] = useState('');
-  
-  // === Game Players ===
-  
-  // Mock player data - in a real game, this would come from a server
-  const [players] = useState<Player[]>([
-    { id: '1', username: 'You', avatar: '/avatars/avatar1.png' },
-    { id: '2', username: 'Player2', avatar: '/avatars/avatar2.png' }
+
+  const [players, setPlayers] = useState<Player[]>([
+    {
+      id: currentPlayerName,
+      username: currentPlayerName,
+      avatar: new URL(`../assets/avatars/avatar${currentPlayerIconId}.png`, import.meta.url).toString(),
+    }
   ]);
-  
-  // === Responsive Layout ===
-  
-  // Whether the current screen size is considered "small" (affects UI layout)
   const [isSmallScreen, setIsSmallScreen] = useState(false);
-  
-  // === Drawing Color Palette ===
-  
-  // Available colors for drawing - covers basic spectrum plus black/white
+
   const colors = [
-    '#FF0000', // Red
-    '#FFA500', // Orange  
-    '#FFFF00', // Yellow
-    '#00FF00', // Green
-    '#00FFFF', // Cyan
-    '#0000FF', // Blue
-    '#FF00FF', // Magenta
-    '#8B4513', // Brown
-    '#000000', // Black
-    '#FFFFFF'  // White
+    '#FF0000',
+    '#FFA500',
+    '#FFFF00',
+    '#00FF00',
+    '#00FFFF',
+    '#0000FF',
+    '#FF00FF',
+    '#8B4513',
+    '#000000',
+    '#FFFFFF'
   ];
-  
-  // === Screen Size Detection ===
-  
-  /**
-   * Set up responsive breakpoint detection
-   * 
-   * Monitors window resize events and updates the isSmallScreen flag
-   * when the viewport width crosses the 900px threshold.
-   */
+
   useEffect(() => {
     LobbyHubClient.start();
 
-    LobbyHubClient.onReceiveMessageHandler((message, playerName) => {
+    LobbyHubClient.onPlayersStateHandler((playerData) => {
+      if (!playerData) return;
+
+      const playerList = Array.isArray(playerData) ? playerData : [];
+
+      const updatedPlayers: Player[] = playerList.map((item: any) => {
+        let name = '';
+        let iconId = 1;
+
+        if (typeof item === 'string') {
+          name = item;
+        } else if (item && typeof item === 'object') {
+          name = item.displayName || item.username || item.name || '';
+          const rawIcon = item.iconId || item.icon || item.IconId || item.Icon || 1;
+          iconId = Number(rawIcon) || 1;
+        }
+
+        return {
+          id: name,
+          username: name,
+          avatar: new URL(`../assets/avatars/avatar${currentPlayerIconId}.png`, import.meta.url).toString()
+        };
+      });
+
+      setPlayers(updatedPlayers.length > 0 ? updatedPlayers : [
+        {
+          id: currentPlayerName,
+          username: currentPlayerName,
+          avatar: new URL(`../assets/avatars/avatar${currentPlayerIconId}.png`, import.meta.url).toString(),
+        }
+      ]);
+    });
+
+    LobbyHubClient.onReceiveMessageHandler((message, playerName, iconId) => {
+      setPlayers(prev => {
+        const exists = prev.some(p => p.id === playerName);
+        if (!exists && playerName) {
+          console.debug("Player not found");
+          return [...prev, {
+            id: playerName,
+            username: playerName,
+            avatar: new URL(`../assets/avatars/avatar${iconId}.png`, import.meta.url).toString(),
+            iconId: iconId
+          }];
+        }
+        console.debug("Player should be fine");
+        return prev;
+      });
+
       const newMessage: ChatMessage = {
         id: Date.now().toString(),
-        playerId: playerName === currentPlayerName ? '1' : '2', // You might want better ID logic
+        playerId: playerName,
         message: message,
         timestamp: new Date(),
         isGuess: true
@@ -85,65 +94,43 @@ export function useDrawingState(lobbyId: string, currentPlayerName: string) {
 
       setChatMessages(prev => [...prev, newMessage]);
     });
-    /**
-     * Check current screen size and update state
-     */
+
     const checkScreenSize = () => {
       setIsSmallScreen(window.innerWidth <= 900);
     };
-    
-    // Check initial screen size
+
     checkScreenSize();
-    
-    // Listen for window resize events
     window.addEventListener('resize', checkScreenSize);
-    
-    // Cleanup listener on component unmount
+
     return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
-  
-  // === Chat Functions ===
-  
-  /**
-   * Send a new chat message
-   * 
-   * Creates a new message from the current input text and adds it
-   * to the message history.
-   */
+  }, [currentPlayerName, currentPlayerIconId]);
+
   const sendMessage = async () => {
     if (!chatInput.trim()) return;
 
     try {
-      // Send via SignalR
-      await LobbyHubClient.sendChatMessage(lobbyId, chatInput, currentPlayerName);
-
-      // Clear input
+      await LobbyHubClient.sendChatMessage(lobbyId, chatInput, currentPlayerName, currentPlayerIconId);
       setChatInput('');
     } catch (err) {
       console.error('Error sending message:', err);
     }
   };
 
-  // === Return Hook Interface ===
-  
   return {
-    // Drawing tool state and controls
-    selectedColor,    // Current selected color
-    setSelectedColor, // Function to change color
-    brushSize,        // Current brush size
-    setBrushSize,     // Function to change brush size
-    selectedTool,     // Current drawing tool
-    setSelectedTool,  // Function to change tool
-    colors,           // Available color palette
-    
-    // Chat system
-    chatMessages,     // Array of all messages
-    chatInput,        // Current input text
-    setChatInput,     // Function to update input
-    sendMessage,      // Function to send message
-    
-    // Game and layout data
-    players,          // Array of game players
-    isSmallScreen,    // Responsive layout flag
+    selectedColor,
+    setSelectedColor,
+    brushSize,
+    setBrushSize,
+    selectedTool,
+    setSelectedTool,
+    colors,
+
+    chatMessages,
+    chatInput,
+    setChatInput,
+    sendMessage,
+
+    players,
+    isSmallScreen,
   };
 }

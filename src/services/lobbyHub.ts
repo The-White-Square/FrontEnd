@@ -6,7 +6,7 @@ export type PlayerJoinedHandler = (lobbyId: string, playerName: string, iconId?:
 export type AssignedRoleHandler = (role: string) => void;
 export type ReceiveImageHandler = (imageUrl: string) => void;
 export type RolesAssignedHandler = (describerName: string, drawerName: string) => void;
-export type ReceiveMessageHandler = (message: string, playerName: string) => void;
+export type ReceiveMessageHandler = (message: string, playerName: string, iconId: number) => void;
 
 class LobbyHubClient {
     private connection?: signalR.HubConnection;
@@ -35,25 +35,13 @@ class LobbyHubClient {
 
         // tolerant PlayerJoined handler: accept both shapes sent from server
         this.connection.on("PlayerJoined", (...args: any[]) => {
-            // Possible shapes:
-            // 1) [ username ]                         -> sent by LobbyController
-            // 2) [ lobbyId, playerName, iconId ]      -> sent by LobbyHub
-            // 3) other variations (defensive)
             let lobbyId: string = "";
             let playerName: string = "";
             let iconId: number | undefined = undefined;
-
-            if (args.length === 1 && typeof args[0] === "string") {
-                // controller sent just the username
-                playerName = args[0];
-            } else {
-                // try to map to expected positions
-                if (typeof args[0] === "string") lobbyId = args[0];
-                if (typeof args[1] === "string") playerName = args[1];
-                if (typeof args[2] === "number") iconId = args[2];
-                // fallback: if playerName still empty and first arg seems like name, use it
-                if (!playerName && typeof args[0] === "string") playerName = args[0];
-            }
+        
+            if (typeof args[0] === "string") lobbyId = args[0];
+            if (typeof args[1] === "string") playerName = args[1];
+            if (typeof args[2] === "number") iconId = args[2];
 
             // normalize empty/undefined to empty string so UI doesn't push undefined
             playerName = playerName ?? "";
@@ -70,8 +58,9 @@ class LobbyHubClient {
         this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
         this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
-        this.connection.on("LobbyMessage", (message: string, playerName: string) => {
-            this.onReceiveMessage?.(message, playerName);
+        this.connection.on("LobbyMessage", (message: string, playerName: string, iconId: number) => {
+            console.debug("Message to lobby:", message, playerName, iconId);
+            this.onReceiveMessage?.(message, playerName, iconId);
         });
         
         // attach any raw handlers previously registered (idempotent set prevents duplicates)
@@ -96,12 +85,12 @@ class LobbyHubClient {
      * If you need to force adding again (for example after a server-side remove),
      * pass { force: true }.
      */
-    async addPlayerToLobby(lobbyId: string, playerName: string, iconId = 0, options?: { force?: boolean }) {
+    async addPlayerToLobby(lobbyId: string, playerName: string, iconId: number, options?: { force?: boolean }) {
         if (!this.connection) await this.start();
 
         if (!options?.force && this.joinedLobbies.has(lobbyId)) {
             // already added on this connection - skip duplicate invocation
-            console.debug(`[hub] addPlayerToLobby skipped (already joined)`, lobbyId, playerName);
+            console.debug(`[hub] addPlayerToLobby skipped (already joined)`, lobbyId, playerName, iconId);
             return;
         }
 
@@ -145,9 +134,11 @@ class LobbyHubClient {
         return await this.connection!.invoke<boolean>("AssignRoles", lobbyId);
     }
 
-    async sendChatMessage(lobbyId: string, message: string, playerName: string) {
+    async sendChatMessage(lobbyId: string, message: string, playerName: string, iconId: number) {
         if (!this.connection) await this.start();
-        await this.connection!.invoke("SendLobbyMessage", lobbyId, message, playerName);
+        console.debug("Sent this message:", lobbyId, message, playerName, iconId);
+        await this.connection!.invoke("SendLobbyMessage", lobbyId, message, playerName, iconId);
+        
     }
 
     // public registration helpers for the UI
