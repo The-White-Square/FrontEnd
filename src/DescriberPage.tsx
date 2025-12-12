@@ -8,7 +8,8 @@ import { useDrawingState } from './hooks/useDrawingState';
 import * as api from './services/lobbyApi';
 import lobbyHub from './services/lobbyHub';
 import './styles/DrawingPage.css';
-import {useLobbyName} from "./hooks/useLobbyName";
+import { useLobbyName } from "./hooks/useLobbyName";
+import DrawingCanvas from './components/DrawingCanvas';
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7179';
 const FRAME_SIZE = 700;
@@ -59,7 +60,7 @@ export default function DescriberPage() {
     };
 
     const init = async () => {
-      try { await lobbyHub.start(); } catch { /* ignore */ }
+      try { await lobbyHub.start(); } catch { }
       lobbyHub.onReceiveImageHandler(handleReceiveImage);
 
       // make sure GoToFinal navigation is registered early
@@ -90,7 +91,6 @@ export default function DescriberPage() {
     marginTop: '260px',
   }), [scale]);
 
-  // Square frame style (restore full border and full rounding)
   const frameBoxStyle: React.CSSProperties = {
     background: 'white',
     borderRadius: 20,
@@ -100,6 +100,9 @@ export default function DescriberPage() {
     height: FRAME_SIZE,
     overflow: 'hidden',
     position: 'relative',
+    display: 'flex',
+    alignItems: 'stretch',
+    justifyContent: 'stretch'
   };
 
   // Shared timer using localStorage round end timestamp
@@ -197,19 +200,20 @@ export default function DescriberPage() {
             </div>
 
             <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+              {/* Live streamed canvas from Artist */}
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
                 <div className="frame-label frame-label--abs">Live Preview</div>
                 <div style={frameBoxStyle}>
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: '#f8f8f8',
-                    }}
+                  <DrawingCanvas
+                    lobbyId={lobbyId}
+                    role="Explainer"
+                    width={FRAME_SIZE}
+                    height={FRAME_SIZE}
                   />
                 </div>
               </div>
 
+              {/* Original reference image */}
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
                 <div className="frame-label frame-label--abs">Original</div>
                 <div style={frameBoxStyle}>

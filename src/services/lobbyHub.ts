@@ -25,6 +25,12 @@ class LobbyHubClient {
     private rawHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
 
     private onReceiveMessage?: ReceiveMessageHandler;
+
+    // Add stroke-related handler fields
+    private onStrokeStarted?: (strokeId: string, color: string, width: number, tool: string) => void;
+    private onStrokePoints?: (strokeId: string, points: { x: number; y: number }[]) => void;
+    private onStrokeEnded?: (strokeId: string) => void;
+    private onCanvasCleared?: () => void;
     private onGoToFinal?: GoToFinalHandler;
 
     // start the connection and attach all known handlers
@@ -69,6 +75,18 @@ class LobbyHubClient {
             this.onReceiveMessage?.(message, playerName);
         });
 
+        // Add stroke-related handlers
+        this.connection.on("StrokeStarted", (strokeId: string, color: string, width: number, tool: string) => {
+            this.onStrokeStarted?.(strokeId, color, width, tool);
+        });
+        this.connection.on("StrokePoints", (strokeId: string, points: { x: number; y: number }[]) => {
+            this.onStrokePoints?.(strokeId, points);
+        });
+        this.connection.on("StrokeEnded", (strokeId: string) => {
+            this.onStrokeEnded?.(strokeId);
+        });
+        this.connection.on("CanvasCleared", () => {
+            this.onCanvasCleared?.();
         // explicit GoToFinal handler for reliable navigation
         this.connection.on("GoToFinal", () => {
             // prefer explicit handler if set, otherwise fall back to rawHandlers map
@@ -96,6 +114,7 @@ class LobbyHubClient {
         }
 
         await this.connection.start();
+        (window as any).lobbyConn = this.connection; // expose for console
     }
 
     /**
@@ -117,6 +136,7 @@ class LobbyHubClient {
 
         await this.connection!.invoke("AddPlayerToLobby", lobbyId, playerName, iconId);
         this.joinedLobbies.add(lobbyId);
+        (window as any).lobbyCode = lobbyId; // expose lobby code for console
     }
 
     /**
@@ -178,6 +198,10 @@ class LobbyHubClient {
     onReceiveImageHandler(cb: ReceiveImageHandler) { this.onReceiveImage = cb; }
     onRolesAssignedHandler(cb: RolesAssignedHandler) { this.onRolesAssigned = cb; }
     onReceiveMessageHandler(cb: ReceiveMessageHandler) { this.onReceiveMessage = cb; }
+    onStrokeStartedHandler(cb: (strokeId: string, color: string, width: number, tool: string) => void) { this.onStrokeStarted = cb; }
+    onStrokePointsHandler(cb: (strokeId: string, points: { x: number; y: number }[]) => void) { this.onStrokePoints = cb; }
+    onStrokeEndedHandler(cb: (strokeId: string) => void) { this.onStrokeEnded = cb; }
+    onCanvasClearedHandler(cb: () => void) { this.onCanvasCleared = cb; }
 
     // explicit GoToFinal handler setter (preferred)
     onGoToFinalHandler(cb: GoToFinalHandler) { this.onGoToFinal = cb; }
@@ -205,6 +229,9 @@ class LobbyHubClient {
             }
         }
     }
+
+    // Add a connection getter
+    getConnection() { return this.connection; }
 }
 
 export default new LobbyHubClient();

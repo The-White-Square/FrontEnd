@@ -2,15 +2,14 @@ import { useRef, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
-import Canvas, { type CanvasRef } from './components/Canvas';
 import ColorPalette from './components/ColorPalette';
 import ToolButtons from './components/ToolButtons';
 import BrushSizeSlider from './components/BrushSizeSlider';
 import ChatWindow from './components/ChatWindow';
 import ChatInput from './components/ChatInput';
-import DrawingControls from './components/DrawingControls';
 import { useDrawingState } from './hooks/useDrawingState';
 import { useLobbyName } from './hooks/useLobbyName';
+import DrawingCanvas from './components/DrawingCanvas';
 import './styles/DrawingPage.css';
 import lobbyHub from './services/lobbyHub';
 
@@ -37,7 +36,7 @@ const DrawingPage = () => {
 
   const lobbyId = sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
-  
+
   // All drawing game state from custom hook
   const {
     selectedColor,     // Current drawing color
@@ -55,6 +54,8 @@ const DrawingPage = () => {
     isSmallScreen,     // Responsive layout flag
   } = useDrawingState(lobbyId, username);
 
+  // Keep placeholder callback to satisfy previous hook expectations
+  const handleSaveState = useCallback(() => {}, []);
   useEffect(() => {
     // Ensure this client listens for the server "GoToFinal" broadcast and
     // also ensure the connection is started and the client is added to the lobby group.
@@ -96,11 +97,6 @@ const DrawingPage = () => {
     // The actual implementation is handled by the Canvas component
   }, []);
 
-  // Canvas control functions that call methods on the canvas component
-  const handleUndo = () => canvasRef.current?.undo();   // Undo last action
-  const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
-  const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
-  
   const scale = 0.7;
   const scaledStyle: React.CSSProperties = {
     transform: `scale(${scale})`,
@@ -175,13 +171,15 @@ const DrawingPage = () => {
             </div>
             
             {/* Center - Main Canvas Area */}
-            <div className="canvas-container">
-              <Canvas
-                ref={canvasRef}
-                selectedColor={selectedColor}
-                brushSize={brushSize}
-                selectedTool={selectedTool}
-                onSaveState={handleSaveState}
+            <div className="canvas-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              {/* Streamable drawing canvas for Artist */}
+              <DrawingCanvas
+                lobbyId={lobbyId}
+                role="Artist"
+                width={700}
+                height={700}
+                strokeColor={selectedColor}
+                strokeWidth={brushSize}
               />
             </div>
             
@@ -238,13 +236,7 @@ const DrawingPage = () => {
               onChange={setChatInput}
               onSend={sendMessage}
             />
-            
-            {/* Canvas control buttons (undo, redo, clear) */}
-            <DrawingControls
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              onClear={handleClear}
-            />
+            {/* Removed DrawingControls since undo/redo not available on stream canvas */}
           </div>
         </div>
       </div>
