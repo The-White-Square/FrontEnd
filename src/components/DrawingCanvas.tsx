@@ -40,11 +40,10 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
   useEffect(() => {
     if (role !== 'Explainer') return;
 
-    lobbyHub.onStrokeStartedHandler((strokeId, color, width, tool) => {
+    const started = (strokeId: string, color: string, width: number, tool: string) => {
       setStrokes(prev => [...prev, { id: strokeId, points: [], color, width, tool }]);
-    });
-
-    lobbyHub.onStrokePointsHandler((strokeId, pts) => {
+    };
+    const points = (strokeId: string, pts: { x: number; y: number }[]) => {
       setStrokes(prev =>
         prev.map(s =>
           s.id === strokeId
@@ -52,20 +51,31 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
             : s
         )
       );
-    });
+    };
+    const ended = (strokeId: string) => {
+      setStrokes(prev => prev.map(s => (s.id === strokeId ? { ...s, finished: true } : s)));
+    };
+    const cleared = () => setStrokes([]);
 
-    lobbyHub.onStrokeEndedHandler(strokeId => {
-      setStrokes(prev =>
-        prev.map(s => (s.id === strokeId ? { ...s, finished: true } : s))
-      );
-    });
+    lobbyHub.onStrokeStartedHandler(started);
+    lobbyHub.onStrokePointsHandler(points);
+    lobbyHub.onStrokeEndedHandler(ended);
+    lobbyHub.onCanvasClearedHandler(cleared);
 
-    lobbyHub.onCanvasClearedHandler(() => setStrokes([]));
+    return () => {
+      // detach by assigning no-op handlers to avoid stale updates
+      lobbyHub.onStrokeStartedHandler(() => {});
+      lobbyHub.onStrokePointsHandler(() => {});
+      lobbyHub.onStrokeEndedHandler(() => {});
+      lobbyHub.onCanvasClearedHandler(() => {});
+    };
   }, [role]);
 
   // Drawer interaction
   const beginStroke = (x: number, y: number) => {
-    const strokeId = crypto.randomUUID();
+    const genId = () =>
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+    const strokeId = genId();
     const stroke: Stroke = {
       id: strokeId,
       points: [x, y],
@@ -76,9 +86,26 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
     currentStrokeRef.current = stroke;
     setStrokes(prev => [...prev, stroke]);
 
+    // enqueue the initial point so the describer receives short clicks
+    batchRef.current.push({ x, y });
+    scheduleFlush();
+
     const conn = lobbyHub.getConnection();
     if (conn) {
       conn.invoke('BeginStroke', lobbyId, strokeId, stroke.color, stroke.width, stroke.tool).catch(() => {});
+    }
+  };
+
+  const flushBatchNow = (strokeId: string) => {
+    const conn = lobbyHub.getConnection();
+    if (!conn) return;
+    if (batchRef.current.length === 0) return;
+    const payload = batchRef.current.slice();
+    batchRef.current = [];
+    try {
+      conn.invoke('AddStrokePoints', lobbyId, strokeId, payload).catch(() => {});
+    } catch {
+      // ignore
     }
   };
 
@@ -100,30 +127,72 @@ const DrawingCanvas: React.FC<DrawingCanvasProps> = ({
 
   const handlePointerDown = (e: any) => {
     if (role !== 'Artist') return;
-    const pos = e.target.getStage().getPointerPosition();
+    const stage = e.target.getStage?.();
+    const pos = stage?.getPointerPosition?.() ?? null;
     if (!pos) return;
     beginStroke(pos.x, pos.y);
   };
 
   const handlePointerMove = (e: any) => {
-    if (role !== 'Artist' || !currentStrokeRef.current) return;
-    const pos = e.target.getStage().getPointerPosition();
+    if (role !== 'Artist') return;
+    const stage = e.target.getStage?.();
+    const pos = stage?.getPointerPosition?.() ?? null;
     if (!pos) return;
-    currentStrokeRef.current.points.push(pos.x, pos.y);
-    setStrokes(prev =>
-      prev.map(s =>
-        s.id === currentStrokeRef.current!.id ? { ...s, points: [...currentStrokeRef.current!.points] } : s
-      )
-    );
+
+    const cs = currentStrokeRef.current;
+    if (!cs) return; // guard against late events after stroke end
+
+    // mutate current stroke points
+    cs.points.push(pos.x, pos.y);
+
+    // update React state using captured stroke id/points to avoid null ref races
+    const strokeId = cs.id;
+    const ptsCopy = [...cs.points];
+    setStrokes(prev => prev.map(s => (s.id === strokeId ? { ...s, points: ptsCopy } : s)));
+
+    // batch for server flush
     batchRef.current.push({ x: pos.x, y: pos.y });
     scheduleFlush();
   };
 
-  const endStroke = () => {
-    if (role !== 'Artist' || !currentStrokeRef.current) return;
-    const strokeId = currentStrokeRef.current.id;
+  const endStroke = (e?: any) => {
+    if (role !== 'Artist') return;
+    const cs = currentStrokeRef.current;
+    if (!cs) return;
+
+    const stage = e?.target?.getStage?.();
+    const pos = stage?.getPointerPosition?.() ?? null;
+    if (pos) {
+      // include last pointer position so describer gets the full curve
+      cs.points.push(pos.x, pos.y);
+      const strokeIdForUpdate = cs.id;
+      const ptsCopy = [...cs.points];
+      setStrokes(prev => prev.map(s => (s.id === strokeIdForUpdate ? { ...s, points: ptsCopy } : s)));
+      batchRef.current.push({ x: pos.x, y: pos.y });
+    }
+
+    const strokeId = cs.id;
+
+    // If no move occurred (single-point stroke), ensure at least one point is sent.
+    if (batchRef.current.length === 0 && cs.points.length === 2) {
+      // duplicate the point so a dot renders on the remote side as a very short segment
+      const x = cs.points[0];
+      const y = cs.points[1];
+      batchRef.current.push({ x, y });
+      batchRef.current.push({ x, y });
+    }
+
+    // flush any remaining points immediately before ending
+    flushBatchNow(strokeId);
+
+    // clear timer
+    if (flushTimerRef.current != null) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+
     currentStrokeRef.current = null;
-    batchRef.current = [];
+
     const conn = lobbyHub.getConnection();
     if (conn) {
       conn.invoke('EndStroke', lobbyId, strokeId).catch(() => {});
