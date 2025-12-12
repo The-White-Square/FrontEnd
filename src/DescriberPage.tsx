@@ -9,6 +9,7 @@ import * as api from './services/lobbyApi';
 import lobbyHub from './services/lobbyHub';
 import './styles/DrawingPage.css';
 import {useLobbyName} from "./hooks/useLobbyName";
+import { Stage, Layer, Line, Rect } from 'react-konva';
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7179';
 const FRAME_SIZE = 700;
@@ -44,6 +45,9 @@ export default function DescriberPage() {
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
+  // live preview state
+  const [strokes, setStrokes] = useState<Array<{ id: string; color: string; width: number; tool: string; points: number[] }>>([]);
+
   const toAbsoluteUrl = useCallback((url: string) => {
     if (!url) return null;
     if (/^https?:\/\//i.test(url)) return url;
@@ -62,9 +66,21 @@ export default function DescriberPage() {
       try { await lobbyHub.start(); } catch { /* ignore */ }
       lobbyHub.onReceiveImageHandler(handleReceiveImage);
 
-      // make sure GoToFinal navigation is registered early
-      lobbyHub.onGoToFinalHandler(() => {
-        try { navigate('/final'); } catch { /* ignore */ }
+      // GoToFinal navigation
+      lobbyHub.onGoToFinalHandler(() => { try { navigate('/final'); } catch { } });
+
+      // drawing preview handlers
+      lobbyHub.onStrokeStartedHandler((strokeId, color, width, tool) => {
+        setStrokes(prev => prev.concat({ id: strokeId, color, width, tool, points: [] }));
+      });
+      lobbyHub.onStrokePointsHandler((strokeId, pts) => {
+        setStrokes(prev => prev.map(s => s.id === strokeId ? { ...s, points: s.points.concat(pts.flatMap(p => [p.x, p.y])) } : s));
+      });
+      lobbyHub.onStrokeEndedHandler((_strokeId) => {
+        // no-op for now; strokes are already complete
+      });
+      lobbyHub.onCanvasClearedHandler(() => {
+        setStrokes([]);
       });
 
       if (lobbyId) {
@@ -145,23 +161,17 @@ export default function DescriberPage() {
   // When the timer reaches zero, trigger server broadcast to move everyone to final page.
   useEffect(() => {
     if (secondsLeft !== 0 || finishTriggeredRef.current) return;
-
-    finishTriggeredRef.current = true; // guard early to avoid races
+    finishTriggeredRef.current = true;
     if (!lobbyId) {
-      // navigate locally as fallback
-      try { navigate('/final'); } catch { /* ignore */ }
+      try { navigate('/final'); } catch { }
       return;
     }
-
     (async () => {
       try {
         await lobbyHub.start();
-        // debug log to help trace whether we attempt the call
-        console.debug('[describer] calling goToFinal', { lobbyId });
         await lobbyHub.goToFinal(lobbyId);
       } catch (err) {
-        console.warn('[describer] goToFinal failed, navigating locally', err);
-        try { navigate('/final'); } catch { /* ignore */ }
+        try { navigate('/final'); } catch { }
       }
     })();
   }, [secondsLeft, lobbyId, navigate]);
@@ -174,7 +184,7 @@ export default function DescriberPage() {
 
   const handleFinishClick = async () => {
     if (!lobbyId) {
-      try { navigate('/final'); } catch { /* ignore */ }
+      try { navigate('/final'); } catch { }
       return;
     }
 
@@ -200,13 +210,23 @@ export default function DescriberPage() {
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
                 <div className="frame-label frame-label--abs">Live Preview</div>
                 <div style={frameBoxStyle}>
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: '#f8f8f8',
-                    }}
-                  />
+                  <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
+                    <Layer>
+                      <Rect x={0} y={0} width={FRAME_SIZE} height={FRAME_SIZE} fill={'#FFFFFF'} />
+                      {strokes.map(s => (
+                        <Line
+                          key={s.id}
+                          points={s.points}
+                          stroke={s.tool === 'eraser' ? '#FFFFFF' : s.color}
+                          strokeWidth={s.width}
+                          tension={0.5}
+                          lineCap={'round'}
+                          lineJoin={'round'}
+                          globalCompositeOperation={s.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                        />
+                      ))}
+                    </Layer>
+                  </Stage>
                 </div>
               </div>
 
@@ -217,26 +237,10 @@ export default function DescriberPage() {
                     <img
                       src={imageUrl}
                       alt="Target"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        display: 'block',
-                      }}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
                   ) : (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#8B4513',
-                        fontSize: 24,
-                        background: '#fff',
-                      }}
-                    >
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B4513', fontSize: 24, background: '#fff' }}>
                       Waiting for image...
                     </div>
                   )}

@@ -1,6 +1,7 @@
 import { useRef, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { Stage, Layer, Rect } from 'react-konva';
 import Konva from 'konva';
+import lobbyHub from '../services/lobbyHub';
 
 interface CanvasProps {
   selectedColor: string;
@@ -22,16 +23,18 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
     // Konva stage and layer references
     const stageRef = useRef<Konva.Stage>(null);
     const layerRef = useRef<Konva.Layer>(null);
-    
+
     // Drawing state
     const isDrawingRef = useRef(false);
     const currentLineRef = useRef<Konva.Line | null>(null);
-    
+    const currentStrokeIdRef = useRef<string | null>(null);
+
     // History for undo/redo - stores complete canvas state
     const historyRef = useRef<string[]>([]);
     const historyIndexRef = useRef(-1);
 
-    // Save canvas state to history
+    const lobbyId = sessionStorage.getItem('lobbyId') || '';
+
     const saveCanvasState = useCallback(() => {
       const stage = stageRef.current;
       if (!stage) return;
@@ -55,15 +58,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       img.onload = () => {
         // Clear the layer
         layer.destroyChildren();
-        
-        // Add the restored image
-        const konvaImg = new Konva.Image({
-          x: 0,
-          y: 0,
-          image: img,
-          width: 700,
-          height: 700,
-        });
+        const konvaImg = new Konva.Image({ x: 0, y: 0, image: img, width: 700, height: 700 });
         layer.add(konvaImg);
         layer.draw();
       };
@@ -90,25 +85,19 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       }
     };
 
-    // Clear canvas functionality
     const clear = () => {
       const layer = layerRef.current;
       if (!layer) return;
       
       // Clear all elements and reset to white background
       layer.destroyChildren();
-      const bgRect = new Konva.Rect({
-        x: 0,
-        y: 0,
-        width: 700,
-        height: 700,
-        fill: '#FFFFFF',
-      });
+      const bgRect = new Konva.Rect({ x: 0, y: 0, width: 700, height: 700, fill: '#FFFFFF' });
       layer.add(bgRect);
       layer.draw();
       
       // Save this clear state to history
       saveCanvasState();
+      if (lobbyId) lobbyHub.clearCanvas(lobbyId).catch(() => {});
     };
 
     // Flood fill implementation using Konva
@@ -121,22 +110,14 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       const canvas = stage.toCanvas();
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imageData.data;
       const width = canvas.width;
       const height = canvas.height;
-
-      // Convert colors to RGBA values
       const hexToRgb = (hex: string) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result ? {
-          r: parseInt(result[1], 16),
-          g: parseInt(result[2], 16),
-          b: parseInt(result[3], 16)
-        } : null;
+        return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
       };
-
       const fillColorRgb = hexToRgb(fillColor);
       if (!fillColorRgb) return;
 
@@ -146,33 +127,20 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       const targetG = data[pixelIndex + 1];
       const targetB = data[pixelIndex + 2];
       const targetA = data[pixelIndex + 3];
-
-      // If target color is same as fill color, do nothing
-      if (targetR === fillColorRgb.r && targetG === fillColorRgb.g && 
-          targetB === fillColorRgb.b && targetA === 255) {
+      if (targetR === fillColorRgb.r && targetG === fillColorRgb.g && targetB === fillColorRgb.b && targetA === 255) {
         return;
       }
-
-      // Flood fill algorithm using stack
       const pixelStack: number[][] = [[Math.floor(startX), Math.floor(startY)]];
       const visited = new Set<string>();
-
       while (pixelStack.length > 0) {
         const [x, y] = pixelStack.pop()!;
-        
         if (x < 0 || x >= width || y < 0 || y >= height) continue;
-        
         const key = `${x},${y}`;
         if (visited.has(key)) continue;
         visited.add(key);
 
         const index = (y * width + x) * 4;
-        
-        // Check if current pixel matches target color
-        if (data[index] === targetR && data[index + 1] === targetG && 
-            data[index + 2] === targetB && data[index + 3] === targetA) {
-          
-          // Fill current pixel
+        if (data[index] === targetR && data[index + 1] === targetG && data[index + 2] === targetB && data[index + 3] === targetA) {
           data[index] = fillColorRgb.r;
           data[index + 1] = fillColorRgb.g;
           data[index + 2] = fillColorRgb.b;
@@ -194,25 +162,9 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       img.onload = () => {
         // Clear the current layer and add the flood-filled image
         layer.destroyChildren();
-        
-        // Add background
-        const bgRect = new Konva.Rect({
-          x: 0,
-          y: 0,
-          width: 700,
-          height: 700,
-          fill: '#FFFFFF',
-        });
+        const bgRect = new Konva.Rect({ x: 0, y: 0, width: 700, height: 700, fill: '#FFFFFF' });
         layer.add(bgRect);
-
-        // Add the flood-filled image
-        const konvaImg = new Konva.Image({
-          x: 0,
-          y: 0,
-          image: img,
-          width: 700,
-          height: 700,
-        });
+        const konvaImg = new Konva.Image({ x: 0, y: 0, image: img, width: 700, height: 700 });
         layer.add(konvaImg);
         
         // No need to redraw lines since they're already in the Konva layer
@@ -235,9 +187,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
     const handleMouseDown = () => {
       const stage = stageRef.current;
       if (!stage) return;
-
       const pos = getPointerPosition(stage);
-
       if (selectedTool === 'fill') {
         floodFill(pos.x, pos.y, selectedColor);
         return;
@@ -263,45 +213,50 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
         layer.add(konvaLine);
         layer.draw();
       }
+      // start streaming stroke to describer
+      if (lobbyId) {
+        const strokeId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        currentStrokeIdRef.current = strokeId;
+        lobbyHub.beginStroke(lobbyId, strokeId, selectedColor, brushSize, selectedTool).catch(() => {});
+      }
     };
 
-    // Continue drawing event  
     const handleMouseMove = () => {
       if (!isDrawingRef.current || !currentLineRef.current) return;
-      
       const stage = stageRef.current;
       const layer = layerRef.current;
       if (!stage || !layer) return;
-      
       const pos = getPointerPosition(stage);
       
       // Update the current line being drawn directly on Konva
       const currentPoints = currentLineRef.current.points();
       currentLineRef.current.points([...currentPoints, pos.x, pos.y]);
       layer.draw();
-    };    // Stop drawing event
+      // stream point batches to describer
+      if (lobbyId && currentStrokeIdRef.current) {
+        const pts = [ { x: pos.x, y: pos.y } ];
+        lobbyHub.addStrokePoints(lobbyId, currentStrokeIdRef.current, pts).catch(() => {});
+      }
+    };
+
     const handleMouseUp = () => {
       if (isDrawingRef.current) {
         saveCanvasState();
       }
       isDrawingRef.current = false;
+      // end stroke stream
+      if (lobbyId && currentStrokeIdRef.current) {
+        lobbyHub.endStroke(lobbyId, currentStrokeIdRef.current).catch(() => {});
+      }
+      currentStrokeIdRef.current = null;
       currentLineRef.current = null;
     };
 
-    // Expose methods to parent component
-    useImperativeHandle(ref, () => ({
-      undo,
-      redo,
-      clear,
-    }));
+    useImperativeHandle(ref, () => ({ undo, redo, clear }));
 
     // Initialize canvas state
     useEffect(() => {
-      const timer = setTimeout(() => {
-        // Give the stage time to render before saving initial state
-        saveCanvasState();
-      }, 100);
-      
+      const timer = setTimeout(() => { saveCanvasState(); }, 100);
       return () => clearTimeout(timer);
     }, [saveCanvasState]);
 
@@ -316,15 +271,7 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
           ref={stageRef}
         >
           <Layer ref={layerRef}>
-            {/* Background */}
-            <Rect
-              x={0}
-              y={0}
-              width={700}
-              height={700}
-              fill={'#FFFFFF'}
-            />
-            {/* Lines are now added directly to the layer via JavaScript */}
+            <Rect x={0} y={0} width={700} height={700} fill={'#FFFFFF'} />
           </Layer>
         </Stage>
       </div>

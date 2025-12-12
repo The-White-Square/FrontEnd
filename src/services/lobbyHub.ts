@@ -9,6 +9,12 @@ export type RolesAssignedHandler = (describerName: string, drawerName: string) =
 export type ReceiveMessageHandler = (message: string, playerName: string) => void;
 export type GoToFinalHandler = () => void;
 
+// Drawing preview event handler types
+export type StrokeStartedHandler = (strokeId: string, color: string, width: number, tool: string) => void;
+export type StrokePointsHandler = (strokeId: string, points: { x: number; y: number }[]) => void;
+export type StrokeEndedHandler = (strokeId: string) => void;
+export type CanvasClearedHandler = () => void;
+
 class LobbyHubClient {
     private connection?: signalR.HubConnection;
     private onPlayerJoined?: PlayerJoinedHandler;
@@ -26,6 +32,12 @@ class LobbyHubClient {
 
     private onReceiveMessage?: ReceiveMessageHandler;
     private onGoToFinal?: GoToFinalHandler;
+
+    // drawing preview handlers
+    private onStrokeStarted?: StrokeStartedHandler;
+    private onStrokePoints?: StrokePointsHandler;
+    private onStrokeEnded?: StrokeEndedHandler;
+    private onCanvasCleared?: CanvasClearedHandler;
 
     // start the connection and attach all known handlers
     async start() {
@@ -82,6 +94,20 @@ class LobbyHubClient {
                     }
                 }
             }
+        });
+
+        // drawing preview inbound events
+        this.connection.on("StrokeStarted", (strokeId: string, color: string, width: number, tool: string) => {
+            this.onStrokeStarted?.(strokeId, color, width, tool);
+        });
+        this.connection.on("StrokePoints", (strokeId: string, points: { x: number; y: number }[]) => {
+            this.onStrokePoints?.(strokeId, points);
+        });
+        this.connection.on("StrokeEnded", (strokeId: string) => {
+            this.onStrokeEnded?.(strokeId);
+        });
+        this.connection.on("CanvasCleared", () => {
+            this.onCanvasCleared?.();
         });
 
         // attach any raw handlers previously registered (idempotent set prevents duplicates)
@@ -171,6 +197,27 @@ class LobbyHubClient {
         }
     }
 
+    // Outbound drawing methods invoked by the drawer
+    async beginStroke(lobbyId: string, strokeId: string, color: string, width: number, tool: string) {
+        if (!this.connection) await this.start();
+        await this.connection!.invoke("BeginStroke", lobbyId, strokeId, color, width, tool);
+    }
+
+    async addStrokePoints(lobbyId: string, strokeId: string, points: { x: number; y: number }[]) {
+        if (!this.connection) await this.start();
+        await this.connection!.invoke("AddStrokePoints", lobbyId, strokeId, points);
+    }
+
+    async endStroke(lobbyId: string, strokeId: string) {
+        if (!this.connection) await this.start();
+        await this.connection!.invoke("EndStroke", lobbyId, strokeId);
+    }
+
+    async clearCanvas(lobbyId: string) {
+        if (!this.connection) await this.start();
+        await this.connection!.invoke("ClearCanvas", lobbyId);
+    }
+
     // public registration helpers for the UI
     onPlayerJoinedHandler(cb: PlayerJoinedHandler) { this.onPlayerJoined = cb; }
     onPlayersStateHandler(cb: (names: string[]) => void) { this.onPlayersState = cb; }
@@ -178,9 +225,13 @@ class LobbyHubClient {
     onReceiveImageHandler(cb: ReceiveImageHandler) { this.onReceiveImage = cb; }
     onRolesAssignedHandler(cb: RolesAssignedHandler) { this.onRolesAssigned = cb; }
     onReceiveMessageHandler(cb: ReceiveMessageHandler) { this.onReceiveMessage = cb; }
-
-    // explicit GoToFinal handler setter (preferred)
     onGoToFinalHandler(cb: GoToFinalHandler) { this.onGoToFinal = cb; }
+
+    // drawing inbound handlers
+    onStrokeStartedHandler(cb: StrokeStartedHandler) { this.onStrokeStarted = cb; }
+    onStrokePointsHandler(cb: StrokePointsHandler) { this.onStrokePoints = cb; }
+    onStrokeEndedHandler(cb: StrokeEndedHandler) { this.onStrokeEnded = cb; }
+    onCanvasClearedHandler(cb: CanvasClearedHandler) { this.onCanvasCleared = cb; }
 
     /**
      * Register arbitrary raw handlers.
