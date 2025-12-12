@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
 import ChatWindow from './components/ChatWindow';
@@ -12,10 +13,27 @@ import DrawingCanvas from './components/DrawingCanvas';
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7179';
 const FRAME_SIZE = 700;
+const ROUND_SECONDS = 300; // 5 minutes
+
+const roundKeyFor = (lobbyId: string) => `roundEnd:${lobbyId || 'global'}`;
+
+function ensureRoundEndTimestamp(lobbyId: string): number {
+  const key = roundKeyFor(lobbyId);
+  const now = Date.now();
+  const existing = localStorage.getItem(key);
+  if (existing) {
+    const ts = parseInt(existing, 10);
+    if (!isNaN(ts) && ts > now) return ts;
+  }
+  const newTs = now + ROUND_SECONDS * 1000;
+  localStorage.setItem(key, newTs.toString());
+  return newTs;
+}
 
 export default function DescriberPage() {
   const lobbyId = sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
+  const navigate = useNavigate();
 
   const {
     chatMessages,
@@ -45,6 +63,11 @@ export default function DescriberPage() {
       try { await lobbyHub.start(); } catch { }
       lobbyHub.onReceiveImageHandler(handleReceiveImage);
 
+      // make sure GoToFinal navigation is registered early
+      lobbyHub.onGoToFinalHandler(() => {
+        try { navigate('/final'); } catch { /* ignore */ }
+      });
+
       if (lobbyId) {
         try {
           const dto = await api.getLobbyImage(lobbyId);
@@ -58,7 +81,7 @@ export default function DescriberPage() {
 
     init();
     return () => { mounted = false; };
-  }, [lobbyId, toAbsoluteUrl]);
+  }, [lobbyId, toAbsoluteUrl, navigate]);
 
   const scale = 0.7;
   const scaledStyle: React.CSSProperties = useMemo(() => ({
@@ -80,6 +103,90 @@ export default function DescriberPage() {
     display: 'flex',
     alignItems: 'stretch',
     justifyContent: 'stretch'
+  };
+
+  // Shared timer using localStorage round end timestamp
+  const [secondsLeft, setSecondsLeft] = useState<number>(() => {
+    const ts = ensureRoundEndTimestamp(lobbyId);
+    return Math.max(0, Math.ceil((ts - Date.now()) / 1000));
+  });
+
+  // Ensure we only trigger finish once when timer hits zero
+  const finishTriggeredRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const ts = ensureRoundEndTimestamp(lobbyId);
+    setSecondsLeft(Math.max(0, Math.ceil((ts - Date.now()) / 1000)));
+
+    const key = roundKeyFor(lobbyId);
+
+    const tick = () => {
+      const stored = localStorage.getItem(key);
+      const end = stored ? parseInt(stored, 10) : ensureRoundEndTimestamp(lobbyId);
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      setSecondsLeft(left);
+    };
+
+    const intervalId = window.setInterval(() => {
+      tick();
+      const stored = localStorage.getItem(key);
+      const end = stored ? parseInt(stored, 10) : 0;
+      if (end <= Date.now()) window.clearInterval(intervalId);
+    }, 250);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) tick();
+    };
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [lobbyId]);
+
+  // When the timer reaches zero, trigger server broadcast to move everyone to final page.
+  useEffect(() => {
+    if (secondsLeft !== 0 || finishTriggeredRef.current) return;
+
+    finishTriggeredRef.current = true; // guard early to avoid races
+    if (!lobbyId) {
+      // navigate locally as fallback
+      try { navigate('/final'); } catch { /* ignore */ }
+      return;
+    }
+
+    (async () => {
+      try {
+        await lobbyHub.start();
+        // debug log to help trace whether we attempt the call
+        console.debug('[describer] calling goToFinal', { lobbyId });
+        await lobbyHub.goToFinal(lobbyId);
+      } catch (err) {
+        console.warn('[describer] goToFinal failed, navigating locally', err);
+        try { navigate('/final'); } catch { /* ignore */ }
+      }
+    })();
+  }, [secondsLeft, lobbyId, navigate]);
+
+  const formatTime = (s: number) => {
+    const minutes = Math.floor(s / 60).toString().padStart(2, '0');
+    const seconds = (s % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  };
+
+  const handleFinishClick = async () => {
+    if (!lobbyId) {
+      try { navigate('/final'); } catch { /* ignore */ }
+      return;
+    }
+
+    try {
+      await lobbyHub.start();
+      await lobbyHub.goToFinal(lobbyId);
+    } catch {
+      navigate('/final');
+    }
   };
 
   return (
@@ -142,13 +249,52 @@ export default function DescriberPage() {
             </div>
           </div>
 
-            <div className="bottom-controls" style={{ justifyContent: 'flex-start' }}>
-              <ChatInput
-                value={chatInput}
-                onChange={setChatInput}
-                onSend={sendMessage}
-              />
+          <div className="bottom-controls" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
+            <div
+              className="round-timer"
+              aria-live="polite"
+              style={{
+                fontFamily: 'monospace',
+                background: '#fff8f0',
+                border: '2px solid #8B4513',
+                borderRadius: 10,
+                padding: '8px 14px',
+                marginRight: 12,
+                minWidth: 110,
+                textAlign: 'center',
+                color: '#8B4513',
+                fontWeight: 700,
+                fontSize: 28,
+                lineHeight: 1,
+              }}
+            >
+              {formatTime(secondsLeft)}
             </div>
+
+            <ChatInput
+              value={chatInput}
+              onChange={setChatInput}
+              onSend={sendMessage}
+            />
+
+            <button
+              id="finish-button"
+              onClick={handleFinishClick}
+              style={{
+                marginLeft: 12,
+                background: '#FF6B2B',
+                color: '#fff8f0',
+                border: '3px solid #8B4513',
+                borderRadius: 12,
+                padding: '10px 18px',
+                fontWeight: 700,
+                fontSize: 18,
+                cursor: 'pointer'
+              }}
+            >
+              Finish
+            </button>
+          </div>
         </div>
       </div>
     </BackgroundLayers>
