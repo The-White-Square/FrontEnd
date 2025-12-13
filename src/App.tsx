@@ -16,6 +16,7 @@ const Home = lazy(() => import('./Home')) // landing page with room creation/joi
 const DrawingPage = lazy(() => import('./DrawingPage')) // main drawing game interface
 const Lobby = lazy(() => import('./components/Lobby')) // lobby UI for create/join / role assignment
 const DescriberPage = lazy(() => import('./DescriberPage')) // describer view (file: src/DescriberPage.tsx)
+const FinalPage = lazy(() => import('./FinalPage')) // final page (no chat / no finish button)
 
 function App() {
     return (
@@ -35,6 +36,9 @@ function App() {
                         <Route path="/game/:roomCode" element={<DrawingPage />} />
                         <Route path="/describer" element={<DescriberPage />} />
                         <Route path="/painter" element={<DrawingPage />} />
+
+                        {/* Final page route */}
+                        <Route path="/final" element={<FinalPage />} />
                     </Routes>
                 </Suspense>
             </BrowserRouter>
