@@ -74,10 +74,30 @@ export default function DescriberPage() {
         setStrokes(prev => prev.concat({ id: strokeId, color, width, tool, points: [] }));
       });
       lobbyHub.onStrokePointsHandler((strokeId, pts) => {
-        setStrokes(prev => prev.map(s => s.id === strokeId ? { ...s, points: s.points.concat(pts.flatMap(p => [p.x, p.y])) } : s));
+        setStrokes(prev => prev.map(s => {
+          if (s.id !== strokeId) return s;
+          const incoming = pts.flatMap(p => [p.x, p.y]);
+          // duplicate first point for round start cap if this is the first batch
+          if (s.points.length === 0 && incoming.length >= 2) {
+            const startX = incoming[0];
+            const startY = incoming[1];
+            return { ...s, points: [startX, startY, startX, startY, ...incoming] };
+          }
+          return { ...s, points: s.points.concat(incoming) };
+        }));
       });
-      lobbyHub.onStrokeEndedHandler((_strokeId) => {
-        // no-op for now; strokes are already complete
+      lobbyHub.onStrokeEndedHandler((strokeId) => {
+        // duplicate end point to preserve round end cap
+        setStrokes(prev => prev.map(s => {
+          if (s.id !== strokeId) return s;
+          const pts = s.points;
+          if (pts.length >= 2) {
+            const endX = pts[pts.length - 2];
+            const endY = pts[pts.length - 1];
+            return { ...s, points: pts.concat([endX, endY]) };
+          }
+          return s;
+        }));
       });
       lobbyHub.onCanvasClearedHandler(() => {
         setStrokes([]);
@@ -219,7 +239,7 @@ export default function DescriberPage() {
                           points={s.points}
                           stroke={s.tool === 'eraser' ? '#FFFFFF' : s.color}
                           strokeWidth={s.width}
-                          tension={0.5}
+                          tension={0}
                           lineCap={'round'}
                           lineJoin={'round'}
                           globalCompositeOperation={s.tool === 'eraser' ? 'destination-out' : 'source-over'}

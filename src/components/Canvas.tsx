@@ -198,11 +198,12 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       // Add line to Konva layer directly
       const layer = layerRef.current;
       if (layer) {
+        const initialPoints = [pos.x, pos.y, pos.x, pos.y]; // duplicate start point to ensure round cap
         const konvaLine = new Konva.Line({
-          points: [pos.x, pos.y],
+          points: initialPoints,
           stroke: selectedTool === 'eraser' ? '#FFFFFF' : selectedColor,
           strokeWidth: brushSize,
-          tension: 0.5,
+          tension: 0, // disable spline smoothing to avoid deformation on fast strokes
           lineCap: 'round',
           lineJoin: 'round',
           globalCompositeOperation: selectedTool === 'eraser' ? 'destination-out' : 'source-over',
@@ -241,6 +242,15 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
 
     const handleMouseUp = () => {
       if (isDrawingRef.current) {
+        // duplicate end point to preserve round cap at end
+        if (currentLineRef.current) {
+          const pts = currentLineRef.current.points();
+          if (pts.length >= 2) {
+            const endX = pts[pts.length - 2];
+            const endY = pts[pts.length - 1];
+            currentLineRef.current.points([...pts, endX, endY]);
+          }
+        }
         saveCanvasState();
       }
       isDrawingRef.current = false;
