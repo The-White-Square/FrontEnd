@@ -73,7 +73,15 @@ class LobbyHubClient {
             this.onPlayersState?.(names);
         });
 
-        this.connection.on("AssignedRole", (role: string) => this.onAssignedRole?.(role));
+        // Normalize backend role names to legacy frontend expectations
+        this.connection.on("AssignedRole", (role: string) => {
+            const normalized =
+                role === "Explainer" ? "Describer" :
+                role === "Artist" ? "Drawer" :
+                role;
+            this.onAssignedRole?.(normalized);
+        });
+
         this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
         this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
@@ -83,7 +91,6 @@ class LobbyHubClient {
 
         // explicit GoToFinal handler for reliable navigation
         this.connection.on("GoToFinal", () => {
-            // prefer explicit handler if set, otherwise fall back to rawHandlers map
             if (this.onGoToFinal) {
                 try { this.onGoToFinal(); } catch { /* ignore */ }
             } else {

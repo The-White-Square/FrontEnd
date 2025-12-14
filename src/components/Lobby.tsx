@@ -20,7 +20,8 @@ export default function Lobby() {
 
     const location = useLocation();
     const navigate = useNavigate();
-    const joinedFromStateRef = useRef(false); // prevent duplicate joinFromState runs (StrictMode/dev)
+    const joinedFromStateRef = useRef(false);
+    const leavingRef = useRef(false); // guard to prevent flicker while navigating
 
     // Resolve local avatar asset path for a given icon id (stored in src/assets/avatars)
     const getLocalAvatarSrc = (id?: number): string | null => {
@@ -74,11 +75,13 @@ export default function Lobby() {
     // attach hub event handlers once when component mounts
     useEffect(() => {
         lobbyHub.onPlayersStateHandler((names) => {
+            if (leavingRef.current) return;
             console.debug("[hub] PlayersState", names);
             setPlayers(normalizePlayers(names ?? []));
         });
 
         lobbyHub.onPlayerJoinedHandler((lobby, playerName, icon) => {
+            if (leavingRef.current) return;
             console.debug("[hub] PlayerJoined", lobby, playerName, icon);
             setPlayers((prev) => {
                 if (prev.some((x) => x.displayName === playerName)) {
@@ -88,51 +91,46 @@ export default function Lobby() {
             });
         });
 
-        // When server assigns a role, navigate players to the correct page.
+        // Navigate immediately on role assignment; avoid updating lobby visuals
         lobbyHub.onAssignedRoleHandler((role) => {
+            if (leavingRef.current) return;
             console.debug("[hub] AssignedRole", role);
-            setMyRole(role);
 
-            // normalize role string and detect which page to navigate to
             const r = (role ?? "").toString().toLowerCase();
-            const isDescriber = r.includes("explainer");
-            const isDrawer = r.includes("artist");
+            const isDescriber = r.includes("explainer") || r.includes("describer");
+            const isDrawer = r.includes("artist") || r.includes("drawer");
 
-            setStatus(`Assigned role: ${role}`);
-
-            // Determine lobby code: prefer state variable, fallback to location.state
             const stateLobbyCode = (location as any)?.state?.lobbyCode;
             const code = lobbyId || stateLobbyCode || "";
 
-            // pass lobby state so pages can use it
             const navState = { lobbyId: code, name, iconId };
 
-            console.debug("[nav] role detection:", { role: r, isDescriber, isDrawer, lobbyId: code });
-
+            leavingRef.current = true; // block further lobby updates
             if (isDrawer) {
-                // go to DrawingPage route using the lobby code
                 if (code) {
-                    navigate(`/game/${encodeURIComponent(code)}`, { state: navState });
+                    navigate(`/game/${encodeURIComponent(code)}`, { state: navState, replace: true });
                 } else {
+                    leavingRef.current = false; // allow retry if navigation fails
                     console.warn("No lobby code available for navigation to drawing page.");
                 }
             } else if (isDescriber) {
-                // go to Describer page
-                navigate("/describer", { state: navState });
+                navigate("/describer", { state: navState, replace: true });
             } else {
-                // fallback: stay on lobby but keep role
+                leavingRef.current = false;
                 console.warn("Unknown role received, not navigating:", role);
             }
         });
 
+        // Describer-only image; do not render in lobby to prevent flicker
         lobbyHub.onReceiveImageHandler((img) => {
+            if (leavingRef.current) return;
             console.debug("[hub] ReceiveImage", img);
-            const absolute = img.startsWith("http") ? img : API_URL + img;
-            setImageUrl(absolute);
-            setStatus("Received image (describer).");
+            // Avoid setting image in lobby; the describer page will request/receive it
+            // setImageUrl omitted on purpose to prevent pre-render flicker
         });
 
         lobbyHub.onRolesAssignedHandler((describer, drawer) => {
+            if (leavingRef.current) return;
             console.debug("[hub] RolesAssigned", describer, drawer);
             setStatus(`Roles assigned - describer: ${describer}, drawer: ${drawer}`);
         });
@@ -199,8 +197,11 @@ export default function Lobby() {
                     return;
                 }
 
-                // tell hub to add this player to lobby (server will broadcast PlayersState/PlayerJoined)
-                await lobbyHub.addPlayerToLobby(codeFromState, name, iconFromState ?? iconId);
+                // tell hub to add this player to lobby with force:true to guarantee a fresh ConnectionId is set
+                await lobbyHub.addPlayerToLobby(codeFromState, name, iconFromState ?? iconId, { force: true });
+
+                // persist for downstream pages
+                try { sessionStorage.setItem("lobbyId", codeFromState); } catch {}
 
                 // explicit refresh to ensure we have authoritative list
                 await refreshPlayersFromServer(codeFromState);
@@ -234,10 +235,29 @@ export default function Lobby() {
     };
 
     const handleAssignRoles = async () => {
-        if (!lobbyId) { setStatus("No lobby id"); return; }
+        const stateLobbyCode = (location as any)?.state?.lobbyCode;
+        const code = lobbyId || stateLobbyCode || "";
+        if (!code) { setStatus("No lobby id"); return; }
+
         try {
+            setStatus("Starting...");
             await lobbyHub.start();
-            const ok = await lobbyHub.assignRoles(lobbyId);
+            await lobbyHub.addPlayerToLobby(code, name, iconId, { force: true });
+
+            await refreshPlayersFromServer(code);
+            const deadline = Date.now() + 3000;
+            while (players.length < 2 && Date.now() < deadline) {
+                await new Promise(r => setTimeout(r, 200));
+                await refreshPlayersFromServer(code);
+            }
+            if (players.length < 2) {
+                setStatus("Waiting for second player to join...");
+                return;
+            }
+
+            try { sessionStorage.setItem("lobbyId", code); } catch {}
+
+            const ok = await lobbyHub.assignRoles(code);
             setStatus(ok ? "Assigned roles" : "Assigning roles failed");
             console.debug("AssignRoles result:", ok);
         } catch (err) {
@@ -289,6 +309,11 @@ export default function Lobby() {
     };
     const startButtonWrap: React.CSSProperties = { display: "flex", justifyContent: "center", marginTop: 40 };
 
+    // If we’re leaving, render nothing to avoid showing transient UI
+    if (leavingRef.current) {
+        return null;
+    }
+
     return (
         <BackgroundLayers>
             <div style={{ position: 'relative', zIndex: 1, color: 'black', padding: 20 }}>
@@ -339,15 +364,6 @@ export default function Lobby() {
                 <div style={startButtonWrap}>
                     <button onClick={handleAssignRoles} style={{ ...mainActionButtonStyle, minWidth: 160, padding: "10px 36px" }}>START</button>
                 </div>
-
-                {myRole === "describer" && imageUrl && (
-                    <div style={{ marginTop: 12 }}>
-                        <h4>Your image (describer)</h4>
-                        <img src={imageUrl} alt="to describe" style={{ maxWidth: 420 }} />
-                    </div>
-                )}
-
-                {myRole === "drawer" && <div style={{ marginTop: 12 }}>You are the drawer, wait for describer to explain and draw.</div>}
             </div>
         </BackgroundLayers>
     );
