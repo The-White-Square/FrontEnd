@@ -10,6 +10,7 @@ import lobbyHub from './services/lobbyHub';
 import './styles/DrawingPage.css';
 import { useLobbyName } from './hooks/useLobbyName';
 import { Stage, Layer, Line, Rect } from 'react-konva';
+import FinalLeftDrawing from './components/FinalLeftDrawing';
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? 'https://localhost:7179';
 const FRAME_SIZE = 700;
@@ -103,28 +104,13 @@ export default function FinalPage() {
       <div className="drawing-page">
         <div className="game-container" style={scaledStyle}>
           <div className="main-content" style={{ alignItems: 'flex-start' }}>
-            {/* No chat sidebar on final page */}
             <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
                 <div className="frame-label frame-label--abs">Drawing</div>
                 <div style={frameBoxStyle}>
-                  <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
-                    <Layer>
-                      <Rect x={0} y={0} width={FRAME_SIZE} height={FRAME_SIZE} fill={'#FFFFFF'} />
-                      {strokes.map(s => (
-                        <Line
-                          key={s.id}
-                          points={s.points}
-                          stroke={s.tool === 'eraser' ? '#FFFFFF' : s.color}
-                          strokeWidth={s.width}
-                          tension={0.5}
-                          lineCap={'round'}
-                          lineJoin={'round'}
-                          globalCompositeOperation={s.tool === 'eraser' ? 'destination-out' : 'source-over'}
-                        />
-                      ))}
-                    </Layer>
-                  </Stage>
+                    <aside className="left-square">
+                        <FinalLeftDrawing />
+                    </aside>
                 </div>
               </div>
 
@@ -157,15 +143,12 @@ export default function FinalPage() {
               marginTop: '2vw',
             }}
           >
-            {/* Use the same visual component & style as Home -> JOIN ROOM button */}
             <ExpandButton
               style={mainActionButtonStyle}
               onClick={() => navigate('/')}
             >
               HOME
             </ExpandButton>
-
-            {/* Chat input and Finish button intentionally removed for final page */}
           </div>
         </div>
       </div>

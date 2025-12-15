@@ -89,17 +89,32 @@ class LobbyHubClient {
             this.onReceiveMessage?.(message, playerName);
         });
 
-        // explicit GoToFinal handler for reliable navigation
-        this.connection.on("GoToFinal", () => {
-            if (this.onGoToFinal) {
-                try { this.onGoToFinal(); } catch { /* ignore */ }
-            } else {
-                const callbacks = this.rawHandlers.get("GoToFinal");
-                if (callbacks) {
-                    for (const cb of callbacks) {
-                        try { cb(); } catch { /* ignore individual errors */ }
+        // Ensure raw 'GoToFinal' handlers run first and are awaited before the explicit onGoToFinal navigation.
+        // We intentionally do NOT attach raw GoToFinal handlers directly to the SignalR connection
+        // (they are stored in rawHandlers map and invoked here in a controlled order).
+        this.connection.on("GoToFinal", async () => {
+            // invoke raw handlers first (if any) and await their results
+            const callbacks = this.rawHandlers.get("GoToFinal");
+            if (callbacks && callbacks.size > 0) {
+                const promises: Promise<unknown>[] = [];
+                for (const cb of callbacks) {
+                    try {
+                        const result = cb();
+                        promises.push(Promise.resolve(result));
+                    } catch {
+                        // swallow synchronous exceptions for robustness
                     }
                 }
+                try {
+                    await Promise.allSettled(promises);
+                } catch {
+                    // ignore
+                }
+            }
+
+            // then call the explicit onGoToFinal handler (navigation)
+            if (this.onGoToFinal) {
+                try { this.onGoToFinal(); } catch { /* ignore */ }
             }
         });
 
@@ -118,7 +133,9 @@ class LobbyHubClient {
         });
 
         // attach any raw handlers previously registered (idempotent set prevents duplicates)
+        // IMPORTANT: skip attaching raw 'GoToFinal' handlers directly to the connection to avoid double-invocation.
         for (const [eventName, callbacks] of this.rawHandlers.entries()) {
+            if (eventName === "GoToFinal") continue; // handled explicitly above
             for (const cb of callbacks) {
                 try {
                     this.connection.on(eventName, cb);
@@ -204,7 +221,66 @@ class LobbyHubClient {
         }
     }
 
-    // Outbound drawing methods invoked by the drawer
+    /**
+     * Upload a data URL (image/png) to the server drawings endpoint.
+     * Returns server JSON result.
+     */
+    async uploadDataUrlToDrawings(dataUrl: string, lobbyId?: string): Promise<any> {
+        // convert dataURL to blob via fetch (works in browsers)
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const fd = new FormData();
+        fd.append('file', blob, 'drawing.png');
+
+        const resp = await fetch(`${API_URL}/api/drawings`, {
+            method: 'POST',
+            body: fd,
+            credentials: 'include'
+        });
+
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(`Upload failed: ${resp.status} ${text}`);
+        }
+
+        const json = await resp.json();
+
+        // If caller provided a lobbyId, attempt to notify the hub so other clients receive the new drawing URL
+        if (lobbyId) {
+            try {
+                if (!this.connection) await this.start();
+                // server method AnnounceDrawing will broadcast DrawingSaved to the group
+                await this.connection!.invoke("AnnounceDrawing", lobbyId, json.url);
+            } catch (err) {
+                // non-fatal; log and continue
+                console.warn('[hub] AnnounceDrawing failed', err);
+            }
+        }
+
+        return json;
+    }
+
+    /**
+     * Convenience: automatically capture a canvas and upload it when GoToFinal arrives.
+     * - canvasSelector: CSS selector for the drawing canvas (default '#drawing-canvas').
+     * Register this once (e.g., on component mount).
+     */
+    autoSaveCanvasOnGoToFinal(canvasSelector = '#drawing-canvas') {
+        const handler = async () => {
+            try {
+                const canvas = document.querySelector(canvasSelector) as HTMLCanvasElement | null;
+                if (!canvas) return;
+                const dataUrl = canvas.toDataURL('image/png');
+                await this.uploadDataUrlToDrawings(dataUrl);
+            } catch (err) {
+                console.warn('[lobbyHub] auto-save canvas failed', err);
+            }
+        };
+
+        this.registerRawHandler('GoToFinal', handler);
+    }
+
+        // Outbound drawing methods invoked by the drawer
     async beginStroke(lobbyId: string, strokeId: string, color: string, width: number, tool: string) {
         if (!this.connection) await this.start();
         await this.connection!.invoke("BeginStroke", lobbyId, strokeId, color, width, tool);
@@ -253,9 +329,9 @@ class LobbyHubClient {
             this.rawHandlers.set(eventName, set);
         }
 
-        // if connection already exists, attach immediately (SignalR will allow multiple attaches;
-        // we prevent duplicates via the Set above)
-        if (this.connection) {
+        // if connection already exists, attach immediately for events other than GoToFinal;
+        // GoToFinal is invoked in a controlled way by the internal handler so we skip direct attach
+        if (this.connection && eventName !== "GoToFinal") {
             try {
                 this.connection.on(eventName, cb);
             } catch {
