@@ -270,6 +270,28 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       return () => clearTimeout(timer);
     }, [saveCanvasState]);
 
+    // Register a best-effort GoToFinal handler that uploads the current stage PNG
+    useEffect(() => {
+      const handler = async (..._args: any[]) => {
+        try {
+          const stage = stageRef.current;
+          if (!stage) return;
+          // produce PNG data URL
+          const dataUrl = stage.toDataURL({ mimeType: 'image/png', quality: 1 });
+          // best-effort upload; pass lobbyId so hub can broadcast the created URL
+          await lobbyHub.uploadDataUrlToDrawings(dataUrl, lobbyId).catch((err) => {
+            console.warn('[Canvas] auto-upload failed', err);
+          });
+        } catch (err) {
+          console.warn('[Canvas] auto-upload error', err);
+        }
+      };
+
+      // register raw handler (idempotent, lobbyHub avoids duplicate registration)
+      lobbyHub.registerRawHandler('GoToFinal', handler);
+      // no explicit cleanup: registerRawHandler persists handlers; no-op on unmount-safe usage
+    }, []);
+
     return (
       <div className="drawing-canvas">
         <Stage
