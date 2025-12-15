@@ -188,9 +188,9 @@ class LobbyHubClient {
         return await this.connection!.invoke<boolean>("AssignRoles", lobbyId);
     }
 
-    async sendChatMessage(lobbyId: string, message: string, playerName: string) {
+    async sendChatMessage(lobbyId: string, message: string, playerName: string, iconId = 0) {
         if (!this.connection) await this.start();
-        await this.connection!.invoke("SendLobbyMessage", lobbyId, message, playerName);
+        await this.connection!.invoke("SendLobbyMessage", lobbyId, message, playerName, iconId);
     }
 
     // ask server to broadcast GoToFinal to the lobby
