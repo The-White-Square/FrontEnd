@@ -1,9 +1,9 @@
 interface ModalManagerProps {
-  openModal: 'create' | 'join' | 'choose' | null;
-  closing: boolean;
-  onClose: () => void;
-  selectedAvatar: number | null;
-  setSelectedAvatar: (id: number) => void;
+  openModal: 'create' | 'join' | 'choose' | null
+  closing: boolean
+  onClose: () => void
+  selectedAvatar: number
+  setSelectedAvatar: (id: number) => void
 }
 
 import CreateRoomModal from '../modals/CreateRoomModal';

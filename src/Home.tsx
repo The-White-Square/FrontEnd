@@ -42,7 +42,7 @@ function Home() {
 
   useEffect(() => {
     setName('');
-    setSelectedAvatar(null);
+    setSelectedAvatar(0);
   }, []);
 
   return (
