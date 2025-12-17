@@ -30,6 +30,52 @@ function ensureRoundEndTimestamp(lobbyId: string): number {
   return newTs;
 }
 
+type Stroke = { id: string; color: string; width: number; tool: string; points: number[] };
+
+function buildStrokesFromEvents(events: lobbyHub.DrawingEvent[]): Stroke[] {
+  const map = new Map<string, Stroke>();
+  const resultOrder: string[] = [];
+
+  for (const ev of events) {
+    switch (ev.type) {
+      case 'CanvasCleared':
+        map.clear();
+        resultOrder.length = 0;
+        break;
+      case 'StrokeStarted': {
+        const s: Stroke = { id: ev.strokeId, color: ev.color, width: ev.width, tool: ev.tool, points: [] };
+        map.set(ev.strokeId, s);
+        resultOrder.push(ev.strokeId);
+        break;
+      }
+      case 'StrokePoints': {
+        const s = map.get(ev.strokeId);
+        if (!s) break;
+        const flat = ev.points.flatMap(p => [p.x, p.y]);
+        if (s.points.length === 0 && flat.length >= 2) {
+          const [sx, sy] = flat;
+          s.points.push(sx, sy, sx, sy);
+        }
+        s.points.push(...flat);
+        break;
+      }
+      case 'StrokeEnded': {
+        const s = map.get(ev.strokeId);
+        if (!s) break;
+        const pts = s.points;
+        if (pts.length >= 2) {
+          const endX = pts[pts.length - 2];
+          const endY = pts[pts.length - 1];
+          s.points.push(endX, endY);
+        }
+        break;
+      }
+    }
+  }
+
+  return resultOrder.map(id => map.get(id)!).filter(Boolean);
+}
+
 export default function DescriberPage() {
   const lobbyId = sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
@@ -46,7 +92,7 @@ export default function DescriberPage() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   // live preview state
-  const [strokes, setStrokes] = useState<Array<{ id: string; color: string; width: number; tool: string; points: number[] }>>([]);
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
 
   const toAbsoluteUrl = useCallback((url: string) => {
     if (!url) return null;
@@ -64,12 +110,11 @@ export default function DescriberPage() {
 
     const init = async () => {
       try { await lobbyHub.start(); } catch { /* ignore */ }
-      lobbyHub.onReceiveImageHandler(handleReceiveImage);
 
-      // GoToFinal navigation
+      lobbyHub.onReceiveImageHandler(handleReceiveImage);
       lobbyHub.onGoToFinalHandler(() => { try { navigate('/final'); } catch { } });
 
-      // drawing preview handlers
+      // Live preview (unchanged)
       lobbyHub.onStrokeStartedHandler((strokeId, color, width, tool) => {
         setStrokes(prev => prev.concat({ id: strokeId, color, width, tool, points: [] }));
       });
@@ -77,17 +122,14 @@ export default function DescriberPage() {
         setStrokes(prev => prev.map(s => {
           if (s.id !== strokeId) return s;
           const incoming = pts.flatMap(p => [p.x, p.y]);
-          // duplicate first point for round start cap if this is the first batch
           if (s.points.length === 0 && incoming.length >= 2) {
-            const startX = incoming[0];
-            const startY = incoming[1];
-            return { ...s, points: [startX, startY, startX, startY, ...incoming] };
+            const [sx, sy] = incoming;
+            return { ...s, points: [sx, sy, sx, sy, ...incoming] };
           }
           return { ...s, points: s.points.concat(incoming) };
         }));
       });
       lobbyHub.onStrokeEndedHandler((strokeId) => {
-        // duplicate end point to preserve round end cap
         setStrokes(prev => prev.map(s => {
           if (s.id !== strokeId) return s;
           const pts = s.points;
@@ -99,11 +141,22 @@ export default function DescriberPage() {
           return s;
         }));
       });
-      lobbyHub.onCanvasClearedHandler(() => {
-        setStrokes([]);
+      lobbyHub.onCanvasClearedHandler(() => { setStrokes([]); });
+
+      // Authoritative reset handler (Undo/Redo/Clear result)
+      lobbyHub.onCanvasResetHandler((events) => {
+        const built = buildStrokesFromEvents(events);
+        setStrokes(built);
       });
 
+      // Bootstrap on refresh/late join
       if (lobbyId) {
+        try {
+          const events = await lobbyHub.getDrawingEvents(lobbyId);
+          const built = buildStrokesFromEvents(events);
+          if (mounted) setStrokes(built);
+        } catch { /* ignore */ }
+
         try {
           const dto = await api.getLobbyImage(lobbyId);
           if (dto?.url) {
@@ -228,7 +281,9 @@ export default function DescriberPage() {
 
             <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                <div className="frame-label frame-label--abs">Live Preview</div>
+                <div className="frame-label frame-label--abs">
+                  Live Preview
+                </div>
                 <div style={frameBoxStyle}>
                   <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
                     <Layer>
@@ -251,7 +306,9 @@ export default function DescriberPage() {
               </div>
 
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                <div className="frame-label frame-label--abs">Original</div>
+                <div className="frame-label frame-label--abs">
+                  Original
+                </div>
                 <div style={frameBoxStyle}>
                   {imageUrl ? (
                     <img

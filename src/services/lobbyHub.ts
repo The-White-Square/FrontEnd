@@ -2,6 +2,14 @@ import * as signalR from "@microsoft/signalr";
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? "https://localhost:7179";
 
+export type DrawingEvent =
+  | { type: 'StrokeStarted'; strokeId: string; color: string; width: number; tool: string }
+  | { type: 'StrokePoints'; strokeId: string; points: { x: number; y: number }[] }
+  | { type: 'StrokeEnded'; strokeId: string }
+  | { type: 'CanvasCleared' };
+
+export type CanvasResetHandler = (events: DrawingEvent[]) => void;
+
 export type PlayerJoinedHandler = (lobbyId: string, playerName: string, iconId?: number) => void;
 export type AssignedRoleHandler = (role: string) => void;
 export type ReceiveImageHandler = (imageUrl: string) => void;
@@ -38,6 +46,7 @@ class LobbyHubClient {
     private onStrokePoints?: StrokePointsHandler;
     private onStrokeEnded?: StrokeEndedHandler;
     private onCanvasCleared?: CanvasClearedHandler;
+    private onCanvasReset?: CanvasResetHandler;
 
     // start the connection and attach all known handlers
     async start() {
@@ -130,6 +139,11 @@ class LobbyHubClient {
         });
         this.connection.on("CanvasCleared", () => {
             this.onCanvasCleared?.();
+        });
+
+        // When timeline changes (Undo/Redo/Clear etc.), rebuild from authoritative list
+        this.connection.on("CanvasReset", (events: DrawingEvent[]) => {
+            this.onCanvasReset?.(events);
         });
 
         // attach any raw handlers previously registered (idempotent set prevents duplicates)
@@ -315,6 +329,7 @@ class LobbyHubClient {
     onStrokePointsHandler(cb: StrokePointsHandler) { this.onStrokePoints = cb; }
     onStrokeEndedHandler(cb: StrokeEndedHandler) { this.onStrokeEnded = cb; }
     onCanvasClearedHandler(cb: CanvasClearedHandler) { this.onCanvasCleared = cb; }
+    onCanvasResetHandler(cb: CanvasResetHandler) { this.onCanvasReset = cb; }
 
     /**
      * Register arbitrary raw handlers.

@@ -16,7 +16,68 @@ export interface CanvasRef {
   clear: () => void;
 }
 
+// Replays a sequence of drawing events into the given Konva layer
+const replayEventsIntoLayer = (events: import('../services/lobbyHub').DrawingEvent[], layer: Konva.Layer) => {
+  layer.destroyChildren();
+  // white background
+  const bgRect = new Konva.Rect({ x: 0, y: 0, width: 700, height: 700, fill: '#FFFFFF' });
+  layer.add(bgRect);
 
+  const strokeMap = new Map<string, Konva.Line>();
+  const order: string[] = [];
+
+  for (const ev of events) {
+    switch (ev.type) {
+      case 'CanvasCleared':
+        layer.destroyChildren();
+        layer.add(bgRect.clone());
+        strokeMap.clear();
+        order.length = 0;
+        break;
+      case 'StrokeStarted': {
+        const line = new Konva.Line({
+          points: [],
+          stroke: ev.tool === 'eraser' ? '#FFFFFF' : ev.color,
+          strokeWidth: ev.width,
+          tension: 0,
+          lineCap: 'round',
+          lineJoin: 'round',
+          globalCompositeOperation: ev.tool === 'eraser' ? 'destination-out' : 'source-over',
+        });
+        strokeMap.set(ev.strokeId, line);
+        order.push(ev.strokeId);
+        layer.add(line);
+        break;
+      }
+      case 'StrokePoints': {
+        const line = strokeMap.get(ev.strokeId);
+        if (!line) break;
+        const flat = ev.points.flatMap(p => [p.x, p.y]);
+        const existing = line.points();
+        if (existing.length === 0 && flat.length >= 2) {
+          const [sx, sy] = flat;
+          line.points([sx, sy, sx, sy, ...flat]);
+        } else {
+          line.points(existing.concat(flat));
+        }
+        break;
+      }
+      case 'StrokeEnded': {
+        const line = strokeMap.get(ev.strokeId);
+        if (!line) break;
+        const pts = line.points();
+        if (pts.length >= 2) {
+          const endX = pts[pts.length - 2];
+          const endY = pts[pts.length - 1];
+          line.points(pts.concat([endX, endY]));
+        }
+        break;
+      }
+    }
+  }
+
+  layer.draw();
+};
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(
   ({ selectedColor, brushSize, selectedTool, onSaveState }, ref) => {
@@ -291,6 +352,30 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       lobbyHub.registerRawHandler('GoToFinal', handler);
       // no explicit cleanup: registerRawHandler persists handlers; no-op on unmount-safe usage
     }, []);
+
+    // Bootstrap from server on mount (refresh recovery)
+    useEffect(() => {
+      let mounted = true;
+      (async () => {
+        try {
+          await lobbyHub.start();
+          if (!lobbyId) return;
+          const events = await lobbyHub.getDrawingEvents(lobbyId);
+          const layer = layerRef.current;
+          if (mounted && layer) {
+            replayEventsIntoLayer(events, layer);
+          }
+        } catch { /* ignore */ }
+      })();
+
+      // Listen for authoritative resets (Undo/Redo/Clear)
+      lobbyHub.onCanvasResetHandler((events) => {
+        const layer = layerRef.current;
+        if (layer) replayEventsIntoLayer(events, layer);
+      });
+
+      return () => { mounted = false; };
+    }, [lobbyId]);
 
     return (
       <div className="drawing-canvas">
