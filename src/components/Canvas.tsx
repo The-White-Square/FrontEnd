@@ -2,6 +2,7 @@ import { useRef, useCallback, forwardRef, useImperativeHandle, useEffect } from 
 import { Stage, Layer, Rect } from 'react-konva';
 import Konva from 'konva';
 import lobbyHub from '../services/lobbyHub';
+import type { DrawingEvent } from '../services/lobbyHub';
 
 interface CanvasProps {
   selectedColor: string;
@@ -16,7 +17,75 @@ export interface CanvasRef {
   clear: () => void;
 }
 
+// Rebuild Konva layer from server events
+function replayEventsIntoLayer(events: DrawingEvent[] | any[], layer: Konva.Layer) {
+  layer.destroyChildren();
+  const bgRect = new Konva.Rect({ x: 0, y: 0, width: 700, height: 700, fill: '#FFFFFF' });
+  layer.add(bgRect);
 
+  const strokeMap = new Map<string, Konva.Line>();
+
+  for (const e of events ?? []) {
+    const type = e.type ?? e.Type;
+    switch (type) {
+      case 'CanvasCleared': {
+        layer.destroyChildren();
+        layer.add(bgRect.clone());
+        strokeMap.clear();
+        break;
+      }
+      case 'StrokeStarted': {
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const color = e.color ?? e.Color;
+        const width = e.width ?? e.Width;
+        const tool = e.tool ?? e.Tool;
+        const line = new Konva.Line({
+          points: [],
+          stroke: tool === 'eraser' ? '#FFFFFF' : color,
+          strokeWidth: width,
+          tension: 0,
+          lineCap: 'round',
+          lineJoin: 'round',
+          globalCompositeOperation: tool === 'eraser' ? 'destination-out' : 'source-over',
+        });
+        strokeMap.set(strokeId, line);
+        layer.add(line);
+        break;
+      }
+      case 'StrokePoints': {
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const line = strokeMap.get(strokeId);
+        if (!line) break;
+        const pts = (e.points ?? e.Points) as Array<{ x?: number; y?: number; X?: number; Y?: number }>;
+        const flat = pts.flatMap(p => [ (p.x ?? p.X) as number, (p.y ?? p.Y) as number ]);
+        const existing = line.points();
+        if (existing.length === 0 && flat.length >= 2) {
+          const [sx, sy] = flat;
+          line.points([sx, sy, sx, sy, ...flat]);
+        } else {
+          line.points(existing.concat(flat));
+        }
+        break;
+      }
+      case 'StrokeEnded': {
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const line = strokeMap.get(strokeId);
+        if (!line) break;
+        const pts = line.points();
+        if (pts.length >= 2) {
+          const endX = pts[pts.length - 2];
+          const endY = pts[pts.length - 1];
+          line.points(pts.concat([endX, endY]));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  layer.draw();
+}
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(
   ({ selectedColor, brushSize, selectedTool, onSaveState }, ref) => {
@@ -291,6 +360,28 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       lobbyHub.registerRawHandler('GoToFinal', handler);
       // no explicit cleanup: registerRawHandler persists handlers; no-op on unmount-safe usage
     }, []);
+
+    // Bootstrap from server on mount (refresh recovery)
+    useEffect(() => {
+      let mounted = true;
+      (async () => {
+        try {
+          await lobbyHub.start();
+          if (lobbyId) {
+            const events = await lobbyHub.getDrawingEvents(lobbyId);
+            const layer = layerRef.current;
+            if (mounted && layer) replayEventsIntoLayer(events, layer);
+          }
+        } catch {}
+      })();
+
+      lobbyHub.onCanvasResetHandler((events) => {
+        const layer = layerRef.current;
+        if (layer) replayEventsIntoLayer(events, layer);
+      });
+
+      return () => { mounted = false; };
+    }, [lobbyId]);
 
     return (
       <div className="drawing-canvas">

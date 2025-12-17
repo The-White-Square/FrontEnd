@@ -37,70 +37,63 @@ const DrawingPage = () => {
 
   const lobbyId = sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
-  
-  // All drawing game state from custom hook
+
   const {
-    selectedColor,     // Current drawing color
-    setSelectedColor,  // Function to change color
-    brushSize,         // Current brush size
-    setBrushSize,      // Function to change brush size
-    selectedTool,      // Current tool (brush/eraser/fill)
-    setSelectedTool,   // Function to change tool
-    colors,            // Available color palette
-    chatMessages,      // Chat message history
-    chatInput,         // Current chat input text
-    setChatInput,      // Function to update chat input
-    sendMessage,       // Function to send chat message
-    players,           // List of game players
-    isSmallScreen,     // Responsive layout flag
+    selectedColor,
+    setSelectedColor,
+    brushSize,
+    setBrushSize,
+    selectedTool,
+    setSelectedTool,
+    colors,
+    chatMessages,
+    chatInput,
+    setChatInput,
+    sendMessage,
+    players,
+    isSmallScreen,
   } = useDrawingState(lobbyId, username);
 
+  // IMPORTANT: listen for GoToFinal and ensure we join the lobby group after refresh
   useEffect(() => {
-    // Ensure this client listens for the server "GoToFinal" broadcast and
-    // also ensure the connection is started and the client is added to the lobby group.
     let mounted = true;
+
+    // Navigate when server broadcasts GoToFinal
+    lobbyHub.onGoToFinalHandler(() => {
+      if (!mounted) return;
+      try { navigate('/final'); } catch { /* ignore */ }
+    });
 
     (async () => {
       try {
-        // Register explicit handler (preferred) so hub will call this when server broadcasts.
-        lobbyHub.onGoToFinalHandler(() => {
-          if (!mounted) return;
-          try { navigate('/final'); } catch { /* ignore */ }
-        });
-
-        // Start connection and ensure we join the lobby so server will include us in group messages.
         await lobbyHub.start();
         if (lobbyId) {
-          try {
-            await lobbyHub.addPlayerToLobby(lobbyId, username);
-          } catch (err) {
-            console.warn('[drawing] addPlayerToLobby failed', err);
-          }
+          // Force re-join updates connectionId after reload so this client is in the SignalR group
+          await lobbyHub.addPlayerToLobby(lobbyId, username, 0, { force: true });
         }
       } catch (err) {
-        console.warn('[drawing] lobbyHub start/register failed', err);
+        console.warn('[drawing] hub start/join failed', err);
       }
     })();
 
     return () => { mounted = false; };
   }, [navigate, lobbyId, username]);
 
-  /**
-   * Canvas save state callback
-   * 
-   * Called when the canvas state should be saved for undo/redo.
-   * The actual implementation is handled inside the Canvas component.
-   */
-  const handleSaveState = useCallback(() => {
-    // This function is called when the canvas state should be saved
-    // The actual implementation is handled by the Canvas component
-  }, []);
+  const handleSaveState = useCallback(() => { /* no-op */ }, []);
 
-  // Canvas control functions that call methods on the canvas component
-  const handleUndo = () => canvasRef.current?.undo();   // Undo last action
-  const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
-  const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
-  
+  // STREAM undo/redo via server (so both clients update)
+  const handleUndo = async () => {
+    if (!lobbyId) return;
+    try { await lobbyHub.undoLast(lobbyId); } catch { /* ignore */ }
+  };
+  const handleRedo = async () => {
+    if (!lobbyId) return;
+    try { await lobbyHub.redoLast(lobbyId); } catch { /* ignore */ }
+  };
+
+  // Clear can stay as is (Canvas.clear() already calls hub ClearCanvas)
+  const handleClear = () => canvasRef.current?.clear();
+
   const scale = 0.7;
   const scaledStyle: React.CSSProperties = {
     transform: `scale(${scale})`,
@@ -123,7 +116,6 @@ const DrawingPage = () => {
     setSecondsLeft(Math.max(0, Math.ceil((ts - Date.now()) / 1000)));
 
     const key = roundKeyFor(lobbyId);
-
     const tick = () => {
       const stored = localStorage.getItem(key);
       const end = stored ? parseInt(stored, 10) : ensureRoundEndTimestamp(lobbyId);
@@ -158,23 +150,14 @@ const DrawingPage = () => {
 
   return (
     <BackgroundLayers>
-      {/* Floating controls in top-left corner - NOT SCALED */}
       <FloatingControls />
-      
       <div className="drawing-page">
-        {/* Apply visual scale only to the game container so FloatingControls stays unchanged */}
         <div className="game-container" style={scaledStyle}>
-          {/* Main content area with 3-column layout */}
           <div className="main-content">
-            {/* Left Sidebar - Chat System */}
             <div className="chat-sidebar">
-              <ChatWindow 
-                messages={chatMessages} 
-                players={players} 
-              />
+              <ChatWindow messages={chatMessages} players={players} />
             </div>
-            
-            {/* Center - Main Canvas Area */}
+
             <div className="canvas-container">
               <Canvas
                 ref={canvasRef}

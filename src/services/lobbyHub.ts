@@ -2,6 +2,14 @@ import * as signalR from "@microsoft/signalr";
 
 const API_URL = (import.meta.env.VITE_API_URL as string) ?? "https://localhost:7179";
 
+export type DrawingEvent =
+  | { type: 'StrokeStarted'; strokeId: string; color: string; width: number; tool: string }
+  | { type: 'StrokePoints'; strokeId: string; points: { x: number; y: number }[] }
+  | { type: 'StrokeEnded'; strokeId: string }
+  | { type: 'CanvasCleared' };
+
+export type CanvasResetHandler = (events: DrawingEvent[]) => void;
+
 export type PlayerJoinedHandler = (lobbyId: string, playerName: string, iconId?: number) => void;
 export type AssignedRoleHandler = (role: string) => void;
 export type ReceiveImageHandler = (imageUrl: string) => void;
@@ -17,17 +25,15 @@ export type CanvasClearedHandler = () => void;
 
 class LobbyHubClient {
     private connection?: signalR.HubConnection;
+    private startPromise?: Promise<void>; // NEW: coalesce start calls
+
     private onPlayerJoined?: PlayerJoinedHandler;
     private onPlayersState?: (names: string[]) => void;
     private onAssignedRole?: AssignedRoleHandler;
     private onReceiveImage?: ReceiveImageHandler;
     private onRolesAssigned?: RolesAssignedHandler;
 
-    // track which lobbies we've already added this client to (prevents duplicate AddPlayerToLobby calls)
     private joinedLobbies: Set<string> = new Set();
-
-    // track raw handlers registered so we don't register the same callback multiple times
-    // Map<eventName, Set<callback>>
     private rawHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
 
     private onReceiveMessage?: ReceiveMessageHandler;
@@ -38,129 +44,141 @@ class LobbyHubClient {
     private onStrokePoints?: StrokePointsHandler;
     private onStrokeEnded?: StrokeEndedHandler;
     private onCanvasCleared?: CanvasClearedHandler;
+    private onCanvasReset?: CanvasResetHandler;
 
-    // start the connection and attach all known handlers
-    async start() {
-        if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) return;
+    // Ensure we end up with exactly one connection and wait until Connected before invoking
+    async start(): Promise<void> {
+        if (this.connection?.state === signalR.HubConnectionState.Connected) return;
+        if (this.startPromise) return this.startPromise;
 
-        this.connection = new signalR.HubConnectionBuilder()
-            .withUrl(`${API_URL}/hubs/lobby`)
-            .withAutomaticReconnect()
-            .build();
+        // If there is an existing connection instance (Connecting/Reconnecting), reuse it.
+        if (!this.connection) {
+            this.connection = new signalR.HubConnectionBuilder()
+                .withUrl(`${API_URL}/hubs/lobby`)
+                .withAutomaticReconnect()
+                .build();
 
-        // tolerant PlayerJoined handler: accept both shapes sent from server
-        this.connection.on("PlayerJoined", (...args: any[]) => {
-            let lobbyId: string = "";
-            let playerName: string = "";
-            let iconId: number | undefined = undefined;
+            // Events
+            this.connection.on("PlayerJoined", (...args: any[]) => {
+                let lobbyId: string = "";
+                let playerName: string = "";
+                let iconId: number | undefined = undefined;
 
-            if (args.length === 1 && typeof args[0] === "string") {
-                playerName = args[0];
-            } else {
-                if (typeof args[0] === "string") lobbyId = args[0];
-                if (typeof args[1] === "string") playerName = args[1];
-                if (typeof args[2] === "number") iconId = args[2];
-                if (!playerName && typeof args[0] === "string") playerName = args[0];
-            }
+                if (args.length === 1 && typeof args[0] === "string") {
+                    playerName = args[0];
+                } else {
+                    if (typeof args[0] === "string") lobbyId = args[0];
+                    if (typeof args[1] === "string") playerName = args[1];
+                    if (typeof args[2] === "number") iconId = args[2];
+                    if (!playerName && typeof args[0] === "string") playerName = args[0];
+                }
 
-            playerName = playerName ?? "";
-            lobbyId = lobbyId ?? "";
+                this.onPlayerJoined?.(lobbyId ?? "", playerName ?? "", iconId);
+            });
 
-            this.onPlayerJoined?.(lobbyId, playerName, iconId);
-        });
+            this.connection.on("PlayersState", (names: string[]) => {
+                this.onPlayersState?.(names);
+            });
 
-        this.connection.on("PlayersState", (names: string[]) => {
-            this.onPlayersState?.(names);
-        });
+            this.connection.on("AssignedRole", (role: string) => {
+                const normalized =
+                    role === "Explainer" ? "Describer" :
+                    role === "Artist" ? "Drawer" :
+                    role;
+                this.onAssignedRole?.(normalized);
+            });
 
-        // Normalize backend role names to legacy frontend expectations
-        this.connection.on("AssignedRole", (role: string) => {
-            const normalized =
-                role === "Explainer" ? "Describer" :
-                role === "Artist" ? "Drawer" :
-                role;
-            this.onAssignedRole?.(normalized);
-        });
+            this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
+            this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
-        this.connection.on("ReceiveImage", (imageUrl: string) => this.onReceiveImage?.(imageUrl));
-        this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
+            this.connection.on("LobbyMessage", (message: string, playerName: string) => {
+                this.onReceiveMessage?.(message, playerName);
+            });
 
-        this.connection.on("LobbyMessage", (message: string, playerName: string) => {
-            this.onReceiveMessage?.(message, playerName);
-        });
-
-        // Ensure raw 'GoToFinal' handlers run first and are awaited before the explicit onGoToFinal navigation.
-        // We intentionally do NOT attach raw GoToFinal handlers directly to the SignalR connection
-        // (they are stored in rawHandlers map and invoked here in a controlled order).
-        this.connection.on("GoToFinal", async () => {
-            // invoke raw handlers first (if any) and await their results
-            const callbacks = this.rawHandlers.get("GoToFinal");
-            if (callbacks && callbacks.size > 0) {
-                const promises: Promise<unknown>[] = [];
-                for (const cb of callbacks) {
-                    try {
-                        const result = cb();
-                        promises.push(Promise.resolve(result));
-                    } catch {
-                        // swallow synchronous exceptions for robustness
+            this.connection.on("GoToFinal", async () => {
+                const callbacks = this.rawHandlers.get("GoToFinal");
+                if (callbacks && callbacks.size > 0) {
+                    const promises: Promise<unknown>[] = [];
+                    for (const cb of callbacks) {
+                        try { promises.push(Promise.resolve(cb())); } catch { /* ignore */ }
                     }
+                    try { await Promise.allSettled(promises); } catch { /* ignore */ }
                 }
-                try {
-                    await Promise.allSettled(promises);
-                } catch {
-                    // ignore
-                }
-            }
+                try { this.onGoToFinal?.(); } catch { /* ignore */ }
+            });
 
-            // then call the explicit onGoToFinal handler (navigation)
-            if (this.onGoToFinal) {
-                try { this.onGoToFinal(); } catch { /* ignore */ }
-            }
-        });
+            // drawing events
+            this.connection.on("StrokeStarted", (strokeId: string, color: string, width: number, tool: string) => {
+                this.onStrokeStarted?.(strokeId, color, width, tool);
+            });
+            this.connection.on("StrokePoints", (strokeId: string, points: { x: number; y: number }[]) => {
+                this.onStrokePoints?.(strokeId, points);
+            });
+            this.connection.on("StrokeEnded", (strokeId: string) => {
+                this.onStrokeEnded?.(strokeId);
+            });
+            this.connection.on("CanvasCleared", () => {
+                this.onCanvasCleared?.();
+            });
+            this.connection.on("CanvasReset", (events: DrawingEvent[]) => {
+                this.onCanvasReset?.(events);
+            });
 
-        // drawing preview inbound events
-        this.connection.on("StrokeStarted", (strokeId: string, color: string, width: number, tool: string) => {
-            this.onStrokeStarted?.(strokeId, color, width, tool);
-        });
-        this.connection.on("StrokePoints", (strokeId: string, points: { x: number; y: number }[]) => {
-            this.onStrokePoints?.(strokeId, points);
-        });
-        this.connection.on("StrokeEnded", (strokeId: string) => {
-            this.onStrokeEnded?.(strokeId);
-        });
-        this.connection.on("CanvasCleared", () => {
-            this.onCanvasCleared?.();
-        });
-
-        // attach any raw handlers previously registered (idempotent set prevents duplicates)
-        // IMPORTANT: skip attaching raw 'GoToFinal' handlers directly to the connection to avoid double-invocation.
-        for (const [eventName, callbacks] of this.rawHandlers.entries()) {
-            if (eventName === "GoToFinal") continue; // handled explicitly above
-            for (const cb of callbacks) {
-                try {
-                    this.connection.on(eventName, cb);
-                } catch {
-                    // ignore attach errors for robustness
+            // attach pre-registered raw handlers (skip GoToFinal)
+            for (const [eventName, callbacks] of this.rawHandlers.entries()) {
+                if (eventName === "GoToFinal") continue;
+                for (const cb of callbacks) {
+                    try { this.connection.on(eventName, cb); } catch { /* ignore */ }
                 }
             }
         }
 
-        await this.connection.start();
+        // Coalesce concurrent starts and wait until Connected
+        this.startPromise = (async () => {
+            if (this.connection!.state !== signalR.HubConnectionState.Connected) {
+                try {
+                    await this.connection!.start();
+                } catch (err) {
+                    this.startPromise = undefined;
+                    throw err;
+                }
+            }
+            // Wait a moment if still in transitional state
+            let tries = 0;
+            while (this.connection!.state !== signalR.HubConnectionState.Connected && tries < 40) {
+                await new Promise(r => setTimeout(r, 50));
+                tries++;
+            }
+            if (this.connection!.state !== signalR.HubConnectionState.Connected) {
+                this.startPromise = undefined;
+                throw new Error("SignalR connection not connected (timeout).");
+            }
+        })();
+
+        try {
+            await this.startPromise;
+        } finally {
+            this.startPromise = undefined;
+        }
     }
 
-    /**
-     * Add this connection as a player in a lobby.
-     * This function is idempotent for the (connection, lobbyId) pair to avoid
-     * multiple AddPlayerToLobby invocations from the same client/connection.
-     *
-     * If you need to force adding again (for example after a server-side remove),
-     * pass { force: true }.
-     */
+    private async ensureConnected() {
+        await this.start();
+        // As an extra guard, poll briefly if state isn’t yet Connected
+        let tries = 0;
+        while (this.connection!.state !== signalR.HubConnectionState.Connected && tries < 40) {
+            await new Promise(r => setTimeout(r, 25));
+            tries++;
+        }
+        if (this.connection!.state !== signalR.HubConnectionState.Connected) {
+            throw new Error("SignalR not connected.");
+        }
+    }
+
     async addPlayerToLobby(lobbyId: string, playerName: string, iconId = 0, options?: { force?: boolean }) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
 
         if (!options?.force && this.joinedLobbies.has(lobbyId)) {
-            // already added on this connection - skip duplicate invocation
             console.debug(`[hub] addPlayerToLobby skipped (already joined)`, lobbyId, playerName);
             return;
         }
@@ -169,15 +187,9 @@ class LobbyHubClient {
         this.joinedLobbies.add(lobbyId);
     }
 
-    /**
-     * Ask the hub/server for current players in a lobby.
-     * Fallback when REST endpoint is not present.
-     * Returns array of names or null on error.
-     */
     async getPlayers(lobbyId: string): Promise<string[] | null> {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         try {
-            // server should implement a hub method "GetPlayers" that returns string[]
             const result = await this.connection!.invoke<string[]>("GetPlayers", lobbyId);
             return result ?? null;
         } catch (err) {
@@ -186,33 +198,27 @@ class LobbyHubClient {
         }
     }
 
-    /**
-     * Optionally allow leaving a lobby (clears internal tracking) so the client can rejoin later.
-     * Not strictly required, but useful for robustness.
-     */
     async removePlayerFromLobby(lobbyId: string) {
         if (!this.connection) return;
         try {
+            await this.ensureConnected();
             await this.connection!.invoke("RemovePlayerFromLobby", lobbyId);
-        } catch {
-            // ignore server errors - still clear local state
-        }
+        } catch { /* ignore */ }
         this.joinedLobbies.delete(lobbyId);
     }
 
     async assignRoles(lobbyId: string) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         return await this.connection!.invoke<boolean>("AssignRoles", lobbyId);
     }
 
     async sendChatMessage(lobbyId: string, message: string, playerName: string, iconId = 0) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         await this.connection!.invoke("SendLobbyMessage", lobbyId, message, playerName, iconId);
     }
 
-    // ask server to broadcast GoToFinal to the lobby
     async goToFinal(lobbyId: string) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         try {
             await this.connection!.invoke("GoToFinal", lobbyId);
         } catch (err) {
@@ -221,12 +227,7 @@ class LobbyHubClient {
         }
     }
 
-    /**
-     * Upload a data URL (image/png) to the server drawings endpoint.
-     * Returns server JSON result.
-     */
     async uploadDataUrlToDrawings(dataUrl: string, lobbyId?: string): Promise<any> {
-        // convert dataURL to blob via fetch (works in browsers)
         const res = await fetch(dataUrl);
         const blob = await res.blob();
         const fd = new FormData();
@@ -245,14 +246,11 @@ class LobbyHubClient {
 
         const json = await resp.json();
 
-        // If caller provided a lobbyId, attempt to notify the hub so other clients receive the new drawing URL
         if (lobbyId) {
             try {
-                if (!this.connection) await this.start();
-                // server method AnnounceDrawing will broadcast DrawingSaved to the group
+                await this.ensureConnected();
                 await this.connection!.invoke("AnnounceDrawing", lobbyId, json.url);
             } catch (err) {
-                // non-fatal; log and continue
                 console.warn('[hub] AnnounceDrawing failed', err);
             }
         }
@@ -260,11 +258,6 @@ class LobbyHubClient {
         return json;
     }
 
-    /**
-     * Convenience: automatically capture a canvas and upload it when GoToFinal arrives.
-     * - canvasSelector: CSS selector for the drawing canvas (default '#drawing-canvas').
-     * Register this once (e.g., on component mount).
-     */
     autoSaveCanvasOnGoToFinal(canvasSelector = '#drawing-canvas') {
         const handler = async () => {
             try {
@@ -280,25 +273,42 @@ class LobbyHubClient {
         this.registerRawHandler('GoToFinal', handler);
     }
 
-        // Outbound drawing methods invoked by the drawer
+    // Outbound drawing methods invoked by the drawer
     async beginStroke(lobbyId: string, strokeId: string, color: string, width: number, tool: string) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         await this.connection!.invoke("BeginStroke", lobbyId, strokeId, color, width, tool);
     }
 
     async addStrokePoints(lobbyId: string, strokeId: string, points: { x: number; y: number }[]) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         await this.connection!.invoke("AddStrokePoints", lobbyId, strokeId, points);
     }
 
     async endStroke(lobbyId: string, strokeId: string) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         await this.connection!.invoke("EndStroke", lobbyId, strokeId);
     }
 
     async clearCanvas(lobbyId: string) {
-        if (!this.connection) await this.start();
+        await this.ensureConnected();
         await this.connection!.invoke("ClearCanvas", lobbyId);
+    }
+
+    // Timeline methods
+    async getDrawingEvents(lobbyId: string): Promise<DrawingEvent[]> {
+        await this.ensureConnected();
+        const events = await this.connection!.invoke<DrawingEvent[]>("GetDrawingEvents", lobbyId);
+        return events ?? [];
+    }
+
+    async undoLast(lobbyId: string): Promise<boolean> {
+        await this.ensureConnected();
+        return await this.connection!.invoke<boolean>("UndoLast", lobbyId);
+    }
+
+    async redoLast(lobbyId: string): Promise<boolean> {
+        await this.ensureConnected();
+        return await this.connection!.invoke<boolean>("RedoLast", lobbyId);
     }
 
     // public registration helpers for the UI
@@ -310,35 +320,26 @@ class LobbyHubClient {
     onReceiveMessageHandler(cb: ReceiveMessageHandler) { this.onReceiveMessage = cb; }
     onGoToFinalHandler(cb: GoToFinalHandler) { this.onGoToFinal = cb; }
 
-    // drawing inbound handlers
     onStrokeStartedHandler(cb: StrokeStartedHandler) { this.onStrokeStarted = cb; }
     onStrokePointsHandler(cb: StrokePointsHandler) { this.onStrokePoints = cb; }
     onStrokeEndedHandler(cb: StrokeEndedHandler) { this.onStrokeEnded = cb; }
     onCanvasClearedHandler(cb: CanvasClearedHandler) { this.onCanvasCleared = cb; }
+    onCanvasResetHandler(cb: CanvasResetHandler) { this.onCanvasReset = cb; }
 
-    /**
-     * Register arbitrary raw handlers.
-     * Registration is idempotent per callback and callbacks are persisted
-     * so they will be attached when the connection is started.
-     */
     registerRawHandler(eventName: string, cb: (...args: any[]) => void) {
-        // store in map first (idempotent)
         const set = this.rawHandlers.get(eventName) ?? new Set<(...args: any[]) => void>();
         if (!set.has(cb)) {
             set.add(cb);
             this.rawHandlers.set(eventName, set);
         }
-
-        // if connection already exists, attach immediately for events other than GoToFinal;
-        // GoToFinal is invoked in a controlled way by the internal handler so we skip direct attach
         if (this.connection && eventName !== "GoToFinal") {
-            try {
-                this.connection.on(eventName, cb);
-            } catch {
-                // ignore attach errors
-            }
+            try { this.connection.on(eventName, cb); } catch { /* ignore */ }
         }
     }
 }
 
-export default new LobbyHubClient();
+const client = new LobbyHubClient();
+export default client;
+
+// Optional: expose for console debugging
+// ;(window as any).lobbyHub = client;
