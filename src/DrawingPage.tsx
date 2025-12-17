@@ -37,46 +37,51 @@ const DrawingPage = () => {
 
   const lobbyId = sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
-  
-  // All drawing game state from custom hook
+
   const {
-    selectedColor,     // Current drawing color
-    setSelectedColor,  // Function to change color
-    brushSize,         // Current brush size
-    setBrushSize,      // Function to change brush size
-    selectedTool,      // Current tool (brush/eraser/fill)
-    setSelectedTool,   // Function to change tool
-    colors,            // Available color palette
-    chatMessages,      // Chat message history
-    chatInput,         // Current chat input text
-    setChatInput,      // Function to update chat input
-    sendMessage,       // Function to send chat message
-    players,           // List of game players
-    isSmallScreen,     // Responsive layout flag
+    selectedColor,
+    setSelectedColor,
+    brushSize,
+    setBrushSize,
+    selectedTool,
+    setSelectedTool,
+    colors,
+    chatMessages,
+    chatInput,
+    setChatInput,
+    sendMessage,
+    players,
+    isSmallScreen,
   } = useDrawingState(lobbyId, username);
 
+  // IMPORTANT: listen for GoToFinal and ensure we join the lobby group after refresh
   useEffect(() => {
+    let mounted = true;
+
+    // Navigate when server broadcasts GoToFinal
+    lobbyHub.onGoToFinalHandler(() => {
+      if (!mounted) return;
+      try { navigate('/final'); } catch { /* ignore */ }
+    });
+
     (async () => {
       try {
         await lobbyHub.start();
         if (lobbyId) {
+          // Force re-join updates connectionId after reload so this client is in the SignalR group
           await lobbyHub.addPlayerToLobby(lobbyId, username, 0, { force: true });
         }
-      } catch {}
+      } catch (err) {
+        console.warn('[drawing] hub start/join failed', err);
+      }
     })();
-  }, [lobbyId, username]);
-  
-  /**
-   * Canvas save state callback
-   * 
-   * Called when the canvas state should be saved for undo/redo.
-   * The actual implementation is handled inside the Canvas component.
-   */
-  const handleSaveState = useCallback(() => {
-    // no-op, canvas manages its own history for local preview only
-  }, []);
 
-  // STREAM undo/redo via server
+    return () => { mounted = false; };
+  }, [navigate, lobbyId, username]);
+
+  const handleSaveState = useCallback(() => { /* no-op */ }, []);
+
+  // STREAM undo/redo via server (so both clients update)
   const handleUndo = async () => {
     if (!lobbyId) return;
     try { await lobbyHub.undoLast(lobbyId); } catch { /* ignore */ }
@@ -111,7 +116,6 @@ const DrawingPage = () => {
     setSecondsLeft(Math.max(0, Math.ceil((ts - Date.now()) / 1000)));
 
     const key = roundKeyFor(lobbyId);
-
     const tick = () => {
       const stored = localStorage.getItem(key);
       const end = stored ? parseInt(stored, 10) : ensureRoundEndTimestamp(lobbyId);
@@ -146,23 +150,14 @@ const DrawingPage = () => {
 
   return (
     <BackgroundLayers>
-      {/* Floating controls in top-left corner - NOT SCALED */}
       <FloatingControls />
-      
       <div className="drawing-page">
-        {/* Apply visual scale only to the game container so FloatingControls stays unchanged */}
         <div className="game-container" style={scaledStyle}>
-          {/* Main content area with 3-column layout */}
           <div className="main-content">
-            {/* Left Sidebar - Chat System */}
             <div className="chat-sidebar">
-              <ChatWindow 
-                messages={chatMessages} 
-                players={players} 
-              />
+              <ChatWindow messages={chatMessages} players={players} />
             </div>
-            
-            {/* Center - Main Canvas Area */}
+
             <div className="canvas-container">
               <Canvas
                 ref={canvasRef}

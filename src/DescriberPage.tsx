@@ -307,25 +307,11 @@ export default function DescriberPage() {
 
             <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                <div className="frame-label frame-label--abs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>Live Preview</span>
-                  <span style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={async () => { if (lobbyId) { try { await lobbyHub.undoLast(lobbyId); } catch {} } }}
-                      title="Undo"
-                      style={{ padding: '4px 10px', borderRadius: 8, border: '2px solid #8B4513', background: '#fff8f0', color: '#8B4513', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Undo
-                    </button>
-                    <button
-                      onClick={async () => { if (lobbyId) { try { await lobbyHub.redoLast(lobbyId); } catch {} } }}
-                      title="Redo"
-                      style={{ padding: '4px 10px', borderRadius: 8, border: '2px solid #8B4513', background: '#fff8f0', color: '#8B4513', fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Redo
-                    </button>
-                  </span>
+                {/* Header bar: revert to only "Live Preview" */}
+                <div className="frame-label frame-label--abs">
+                  Live Preview
                 </div>
+
                 <div style={frameBoxStyle}>
                   <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
                     <Layer>
@@ -348,9 +334,7 @@ export default function DescriberPage() {
               </div>
 
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                <div className="frame-label frame-label--abs">
-                  Original
-                </div>
+                <div className="frame-label frame-label--abs">Original</div>
                 <div style={frameBoxStyle}>
                   {imageUrl ? (
                     <img
@@ -368,6 +352,7 @@ export default function DescriberPage() {
             </div>
           </div>
 
+          {}
           <div className="bottom-controls" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
             <div
   className="round-timer"
