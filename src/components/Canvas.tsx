@@ -2,6 +2,7 @@ import { useRef, useCallback, forwardRef, useImperativeHandle, useEffect } from 
 import { Stage, Layer, Rect } from 'react-konva';
 import Konva from 'konva';
 import lobbyHub from '../services/lobbyHub';
+import type { DrawingEvent } from '../services/lobbyHub';
 
 interface CanvasProps {
   selectedColor: string;
@@ -16,43 +17,47 @@ export interface CanvasRef {
   clear: () => void;
 }
 
-// Replays a sequence of drawing events into the given Konva layer
-const replayEventsIntoLayer = (events: import('../services/lobbyHub').DrawingEvent[], layer: Konva.Layer) => {
+// Rebuild Konva layer from server events
+function replayEventsIntoLayer(events: DrawingEvent[] | any[], layer: Konva.Layer) {
   layer.destroyChildren();
-  // white background
   const bgRect = new Konva.Rect({ x: 0, y: 0, width: 700, height: 700, fill: '#FFFFFF' });
   layer.add(bgRect);
 
   const strokeMap = new Map<string, Konva.Line>();
-  const order: string[] = [];
 
-  for (const ev of events) {
-    switch (ev.type) {
-      case 'CanvasCleared':
+  for (const e of events ?? []) {
+    const type = e.type ?? e.Type;
+    switch (type) {
+      case 'CanvasCleared': {
         layer.destroyChildren();
         layer.add(bgRect.clone());
         strokeMap.clear();
-        order.length = 0;
         break;
+      }
       case 'StrokeStarted': {
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const color = e.color ?? e.Color;
+        const width = e.width ?? e.Width;
+        const tool = e.tool ?? e.Tool;
         const line = new Konva.Line({
           points: [],
-          stroke: ev.tool === 'eraser' ? '#FFFFFF' : ev.color,
-          strokeWidth: ev.width,
+          stroke: tool === 'eraser' ? '#FFFFFF' : color,
+          strokeWidth: width,
           tension: 0,
           lineCap: 'round',
           lineJoin: 'round',
-          globalCompositeOperation: ev.tool === 'eraser' ? 'destination-out' : 'source-over',
+          globalCompositeOperation: tool === 'eraser' ? 'destination-out' : 'source-over',
         });
-        strokeMap.set(ev.strokeId, line);
-        order.push(ev.strokeId);
+        strokeMap.set(strokeId, line);
         layer.add(line);
         break;
       }
       case 'StrokePoints': {
-        const line = strokeMap.get(ev.strokeId);
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const line = strokeMap.get(strokeId);
         if (!line) break;
-        const flat = ev.points.flatMap(p => [p.x, p.y]);
+        const pts = (e.points ?? e.Points) as Array<{ x?: number; y?: number; X?: number; Y?: number }>;
+        const flat = pts.flatMap(p => [ (p.x ?? p.X) as number, (p.y ?? p.Y) as number ]);
         const existing = line.points();
         if (existing.length === 0 && flat.length >= 2) {
           const [sx, sy] = flat;
@@ -63,7 +68,8 @@ const replayEventsIntoLayer = (events: import('../services/lobbyHub').DrawingEve
         break;
       }
       case 'StrokeEnded': {
-        const line = strokeMap.get(ev.strokeId);
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const line = strokeMap.get(strokeId);
         if (!line) break;
         const pts = line.points();
         if (pts.length >= 2) {
@@ -73,11 +79,13 @@ const replayEventsIntoLayer = (events: import('../services/lobbyHub').DrawingEve
         }
         break;
       }
+      default:
+        break;
     }
   }
 
   layer.draw();
-};
+}
 
 const Canvas = forwardRef<CanvasRef, CanvasProps>(
   ({ selectedColor, brushSize, selectedTool, onSaveState }, ref) => {
@@ -359,16 +367,14 @@ const Canvas = forwardRef<CanvasRef, CanvasProps>(
       (async () => {
         try {
           await lobbyHub.start();
-          if (!lobbyId) return;
-          const events = await lobbyHub.getDrawingEvents(lobbyId);
-          const layer = layerRef.current;
-          if (mounted && layer) {
-            replayEventsIntoLayer(events, layer);
+          if (lobbyId) {
+            const events = await lobbyHub.getDrawingEvents(lobbyId);
+            const layer = layerRef.current;
+            if (mounted && layer) replayEventsIntoLayer(events, layer);
           }
-        } catch { /* ignore */ }
+        } catch {}
       })();
 
-      // Listen for authoritative resets (Undo/Redo/Clear)
       lobbyHub.onCanvasResetHandler((events) => {
         const layer = layerRef.current;
         if (layer) replayEventsIntoLayer(events, layer);

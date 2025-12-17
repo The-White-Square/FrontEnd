@@ -7,6 +7,7 @@ import ChatInput from './components/ChatInput';
 import { useDrawingState } from './hooks/useDrawingState';
 import * as api from './services/lobbyApi';
 import lobbyHub from './services/lobbyHub';
+import type { DrawingEvent } from './services/lobbyHub';
 import './styles/DrawingPage.css';
 import {useLobbyName} from "./hooks/useLobbyName";
 import { Stage, Layer, Line, Rect } from 'react-konva';
@@ -32,26 +33,39 @@ function ensureRoundEndTimestamp(lobbyId: string): number {
 
 type Stroke = { id: string; color: string; width: number; tool: string; points: number[] };
 
-function buildStrokesFromEvents(events: lobbyHub.DrawingEvent[]): Stroke[] {
+// Accept both camelCase and PascalCase from the server
+function buildStrokesFromEvents(events: DrawingEvent[] | any[]): Stroke[] {
   const map = new Map<string, Stroke>();
-  const resultOrder: string[] = [];
+  const order: string[] = [];
 
-  for (const ev of events) {
-    switch (ev.type) {
-      case 'CanvasCleared':
+  for (const e of events ?? []) {
+    const type = e.type ?? e.Type;
+    switch (type) {
+      case 'CanvasCleared': {
         map.clear();
-        resultOrder.length = 0;
+        order.length = 0;
         break;
+      }
       case 'StrokeStarted': {
-        const s: Stroke = { id: ev.strokeId, color: ev.color, width: ev.width, tool: ev.tool, points: [] };
-        map.set(ev.strokeId, s);
-        resultOrder.push(ev.strokeId);
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const color = e.color ?? e.Color;
+        const width = e.width ?? e.Width;
+        const tool = e.tool ?? e.Tool;
+        const s: Stroke = { id: strokeId, color, width, tool, points: [] };
+        map.set(strokeId, s);
+        order.push(strokeId);
         break;
       }
       case 'StrokePoints': {
-        const s = map.get(ev.strokeId);
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const s = map.get(strokeId);
         if (!s) break;
-        const flat = ev.points.flatMap(p => [p.x, p.y]);
+        const pts = (e.points ?? e.Points) as Array<{ x?: number; y?: number; X?: number; Y?: number }>;
+        const flat = pts.flatMap(p => {
+          const x = (p.x ?? p.X) as number;
+          const y = (p.y ?? p.Y) as number;
+          return [x, y];
+        });
         if (s.points.length === 0 && flat.length >= 2) {
           const [sx, sy] = flat;
           s.points.push(sx, sy, sx, sy);
@@ -60,7 +74,8 @@ function buildStrokesFromEvents(events: lobbyHub.DrawingEvent[]): Stroke[] {
         break;
       }
       case 'StrokeEnded': {
-        const s = map.get(ev.strokeId);
+        const strokeId = e.strokeId ?? e.StrokeId;
+        const s = map.get(strokeId);
         if (!s) break;
         const pts = s.points;
         if (pts.length >= 2) {
@@ -70,10 +85,12 @@ function buildStrokesFromEvents(events: lobbyHub.DrawingEvent[]): Stroke[] {
         }
         break;
       }
+      default:
+        break;
     }
   }
 
-  return resultOrder.map(id => map.get(id)!).filter(Boolean);
+  return order.map(id => map.get(id)!).filter(Boolean);
 }
 
 export default function DescriberPage() {
@@ -90,8 +107,6 @@ export default function DescriberPage() {
   } = useDrawingState(lobbyId, username);
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-
-  // live preview state
   const [strokes, setStrokes] = useState<Stroke[]>([]);
 
   const toAbsoluteUrl = useCallback((url: string) => {
@@ -99,6 +114,21 @@ export default function DescriberPage() {
     if (/^https?:\/\//i.test(url)) return url;
     return API_URL + url;
   }, []);
+
+  // IMPORTANT: re-add the describer to the lobby after refresh to update connectionId and join the SignalR group
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        await lobbyHub.start();
+        if (lobbyId) {
+          // force ensures we update even if client believes it already joined
+          await lobbyHub.addPlayerToLobby(lobbyId, username, 0, { force: true });
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { mounted = false; };
+  }, [lobbyId, username]);
 
   useEffect(() => {
     let mounted = true;
@@ -114,7 +144,7 @@ export default function DescriberPage() {
       lobbyHub.onReceiveImageHandler(handleReceiveImage);
       lobbyHub.onGoToFinalHandler(() => { try { navigate('/final'); } catch { } });
 
-      // Live preview (unchanged)
+      // live stream handlers
       lobbyHub.onStrokeStartedHandler((strokeId, color, width, tool) => {
         setStrokes(prev => prev.concat({ id: strokeId, color, width, tool, points: [] }));
       });
@@ -143,13 +173,13 @@ export default function DescriberPage() {
       });
       lobbyHub.onCanvasClearedHandler(() => { setStrokes([]); });
 
-      // Authoritative reset handler (Undo/Redo/Clear result)
-      lobbyHub.onCanvasResetHandler((events) => {
+      // authoritative reset (Undo/Redo/Clear)
+      lobbyHub.onCanvasResetHandler((events: DrawingEvent[]) => {
         const built = buildStrokesFromEvents(events);
         setStrokes(built);
       });
 
-      // Bootstrap on refresh/late join
+      // Bootstrap from server on refresh / late join
       if (lobbyId) {
         try {
           const events = await lobbyHub.getDrawingEvents(lobbyId);
@@ -179,7 +209,6 @@ export default function DescriberPage() {
     marginTop: '260px',
   }), [scale]);
 
-  // Square frame style (restore full border and full rounding)
   const frameBoxStyle: React.CSSProperties = {
     background: 'white',
     borderRadius: 20,
@@ -191,13 +220,11 @@ export default function DescriberPage() {
     position: 'relative',
   };
 
-  // Shared timer using localStorage round end timestamp
   const [secondsLeft, setSecondsLeft] = useState<number>(() => {
     const ts = ensureRoundEndTimestamp(lobbyId);
     return Math.max(0, Math.ceil((ts - Date.now()) / 1000));
   });
 
-  // Ensure we only trigger finish once when timer hits zero
   const finishTriggeredRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -231,7 +258,6 @@ export default function DescriberPage() {
     };
   }, [lobbyId]);
 
-  // When the timer reaches zero, trigger server broadcast to move everyone to final page.
   useEffect(() => {
     if (secondsLeft !== 0 || finishTriggeredRef.current) return;
     finishTriggeredRef.current = true;
@@ -281,8 +307,24 @@ export default function DescriberPage() {
 
             <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
               <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                <div className="frame-label frame-label--abs">
-                  Live Preview
+                <div className="frame-label frame-label--abs" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Live Preview</span>
+                  <span style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={async () => { if (lobbyId) { try { await lobbyHub.undoLast(lobbyId); } catch {} } }}
+                      title="Undo"
+                      style={{ padding: '4px 10px', borderRadius: 8, border: '2px solid #8B4513', background: '#fff8f0', color: '#8B4513', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Undo
+                    </button>
+                    <button
+                      onClick={async () => { if (lobbyId) { try { await lobbyHub.redoLast(lobbyId); } catch {} } }}
+                      title="Redo"
+                      style={{ padding: '4px 10px', borderRadius: 8, border: '2px solid #8B4513', background: '#fff8f0', color: '#8B4513', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Redo
+                    </button>
+                  </span>
                 </div>
                 <div style={frameBoxStyle}>
                   <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
@@ -328,25 +370,25 @@ export default function DescriberPage() {
 
           <div className="bottom-controls" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
             <div
-              className="round-timer"
-              aria-live="polite"
-              style={{
-                fontFamily: 'monospace',
-                background: '#fff8f0',
-                border: '2px solid #8B4513',
-                borderRadius: 10,
-                padding: '8px 14px',
-                marginRight: 12,
-                minWidth: 110,
-                textAlign: 'center',
-                color: '#8B4513',
-                fontWeight: 700,
-                fontSize: 28,
-                lineHeight: 1,
-              }}
-            >
-              {formatTime(secondsLeft)}
-            </div>
+  className="round-timer"
+  aria-live="polite"
+  style={{
+    fontFamily: 'monospace',
+    background: '#fff8f0',
+    border: '2px solid #8B4513',
+    borderRadius: 10,
+    padding: '8px 14px',
+    marginRight: 12,
+    minWidth: 110,
+    textAlign: 'center',
+    color: '#8B4513',
+    fontWeight: 700,
+    fontSize: 28,
+    lineHeight: 1,
+  }}
+>
+  {formatTime(secondsLeft)}
+</div>
 
             <ChatInput
               value={chatInput}

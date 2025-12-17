@@ -56,35 +56,16 @@ const DrawingPage = () => {
   } = useDrawingState(lobbyId, username);
 
   useEffect(() => {
-    // Ensure this client listens for the server "GoToFinal" broadcast and
-    // also ensure the connection is started and the client is added to the lobby group.
-    let mounted = true;
-
     (async () => {
       try {
-        // Register explicit handler (preferred) so hub will call this when server broadcasts.
-        lobbyHub.onGoToFinalHandler(() => {
-          if (!mounted) return;
-          try { navigate('/final'); } catch { /* ignore */ }
-        });
-
-        // Start connection and ensure we join the lobby so server will include us in group messages.
         await lobbyHub.start();
         if (lobbyId) {
-          try {
-            await lobbyHub.addPlayerToLobby(lobbyId, username);
-          } catch (err) {
-            console.warn('[drawing] addPlayerToLobby failed', err);
-          }
+          await lobbyHub.addPlayerToLobby(lobbyId, username, 0, { force: true });
         }
-      } catch (err) {
-        console.warn('[drawing] lobbyHub start/register failed', err);
-      }
+      } catch {}
     })();
-
-    return () => { mounted = false; };
-  }, [navigate, lobbyId, username]);
-
+  }, [lobbyId, username]);
+  
   /**
    * Canvas save state callback
    * 
@@ -92,15 +73,22 @@ const DrawingPage = () => {
    * The actual implementation is handled inside the Canvas component.
    */
   const handleSaveState = useCallback(() => {
-    // This function is called when the canvas state should be saved
-    // The actual implementation is handled by the Canvas component
+    // no-op, canvas manages its own history for local preview only
   }, []);
 
-  // Canvas control functions that call methods on the canvas component
-  const handleUndo = () => canvasRef.current?.undo();   // Undo last action
-  const handleRedo = () => canvasRef.current?.redo();   // Redo last undone action
-  const handleClear = () => canvasRef.current?.clear(); // Clear entire canvas
-  
+  // STREAM undo/redo via server
+  const handleUndo = async () => {
+    if (!lobbyId) return;
+    try { await lobbyHub.undoLast(lobbyId); } catch { /* ignore */ }
+  };
+  const handleRedo = async () => {
+    if (!lobbyId) return;
+    try { await lobbyHub.redoLast(lobbyId); } catch { /* ignore */ }
+  };
+
+  // Clear can stay as is (Canvas.clear() already calls hub ClearCanvas)
+  const handleClear = () => canvasRef.current?.clear();
+
   const scale = 0.7;
   const scaledStyle: React.CSSProperties = {
     transform: `scale(${scale})`,
