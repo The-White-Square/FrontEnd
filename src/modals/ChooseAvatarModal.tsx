@@ -9,8 +9,8 @@ import { AVATAR_STYLES } from '../constants/avatarConstants';
 import { useLobbyName } from "../hooks/useLobbyName";
 
 type Props = {
-  selectedAvatar: number | null
-  setSelectedAvatar: (id: number | null) => void
+  selectedAvatar: number | 0
+  setSelectedAvatar: (id: number | 0) => void
   onClose?: () => void
   onSave?: (username: string, avatarId: number) => void
 }

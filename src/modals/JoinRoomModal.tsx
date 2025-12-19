@@ -7,7 +7,7 @@ import * as api from "../services/lobbyApi";
 
 type Props = {
     onClose?: () => void
-    selectedAvatar?: number | null
+    selectedAvatar?: number | 0
 }
 
 function JoinRoomModal({ onClose, selectedAvatar }: Props) {

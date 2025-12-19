@@ -25,14 +25,14 @@ export function useModalManager() {
   const [closing, setClosing] = useState(false);
   
   // Persisted selected avatar id (read from localStorage on init)
-  const [selectedAvatar, setSelectedAvatarState] = useState<number | null>(() => {
+  const [selectedAvatar, setSelectedAvatarState] = useState<number | 0>(() => {
     try {
       const raw = localStorage.getItem(AVATAR_STORAGE_KEY);
-      if (!raw) return null;
+      if (!raw) return 0;
       const parsed = parseInt(raw, 10);
-      return Number.isNaN(parsed) ? null : parsed;
+      return Number.isNaN(parsed) ? 0 : parsed;
     } catch {
-      return null;
+      return 0;
     }
   });
 
@@ -56,7 +56,7 @@ export function useModalManager() {
   const openChooseModal = () => setOpenModal('choose');   // Avatar selection modal
 
   // Wrapped setter that persists to localStorage
-  const setSelectedAvatar = (id: number | null) => {
+  const setSelectedAvatar = (id: number | 0) => {
     try {
       if (id === null) {
         localStorage.removeItem(AVATAR_STORAGE_KEY);

@@ -38,7 +38,7 @@ export function useDrawingState(lobbyId: string, currentPlayerName: string) {
   
   // Mock player data - in a real game, this would come from a server
   const [players] = useState<Player[]>([
-    { id: '1', username: 'You', avatar: '/avatars/avatar1.png' },
+    { id: sessionStorage.getItem('avatarId') || '0', username: 'You', avatar: '/avatars/avatar1.png' },
     { id: '2', username: 'Player2', avatar: '/avatars/avatar2.png' }
   ]);
   

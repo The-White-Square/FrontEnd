@@ -2,7 +2,7 @@ interface ModalManagerProps {
   openModal: 'create' | 'join' | 'choose' | null;
   closing: boolean;
   onClose: () => void;
-  selectedAvatar: number | null;
+  selectedAvatar: number | 0;
   setSelectedAvatar: (id: number) => void;
 }
 
@@ -15,7 +15,7 @@ function ModalManager({
   openModal,
   closing,
   onClose,
-  selectedAvatar,
+  selectedAvatar ,
   setSelectedAvatar,
 }: ModalManagerProps) {
   if (!openModal) return null;

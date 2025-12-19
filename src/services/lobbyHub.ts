@@ -62,7 +62,7 @@ class LobbyHubClient {
             this.connection.on("PlayerJoined", (...args: any[]) => {
                 let lobbyId: string = "";
                 let playerName: string = "";
-                let iconId: number | undefined = undefined;
+                let iconId: number | 0 = 0;
 
                 if (args.length === 1 && typeof args[0] === "string") {
                     playerName = args[0];
@@ -164,7 +164,7 @@ class LobbyHubClient {
 
     private async ensureConnected() {
         await this.start();
-        // As an extra guard, poll briefly if state isn’t yet Connected
+        // As an extra guard, poll briefly if state isnï¿½t yet Connected
         let tries = 0;
         while (this.connection!.state !== signalR.HubConnectionState.Connected && tries < 40) {
             await new Promise(r => setTimeout(r, 25));
