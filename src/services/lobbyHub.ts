@@ -10,7 +10,7 @@ export type DrawingEvent =
 
 export type CanvasResetHandler = (events: DrawingEvent[]) => void;
 
-export type PlayerJoinedHandler = (lobbyId: string, playerName: string, iconId?: number) => void;
+export type PlayerJoinedHandler = (lobbyId: string, playerName: string, iconId: number) => void;
 export type AssignedRoleHandler = (role: string) => void;
 export type ReceiveImageHandler = (imageUrl: string) => void;
 export type RolesAssignedHandler = (describerName: string, drawerName: string) => void;
@@ -62,7 +62,7 @@ class LobbyHubClient {
             this.connection.on("PlayerJoined", (...args: any[]) => {
                 let lobbyId: string = "";
                 let playerName: string = "";
-                let iconId: number | 0 = 0;
+                let iconId: number = 0;
 
                 if (args.length === 1 && typeof args[0] === "string") {
                     playerName = args[0];
@@ -92,6 +92,7 @@ class LobbyHubClient {
             this.connection.on("RolesAssigned", (describer: string, drawer: string) => this.onRolesAssigned?.(describer, drawer));
 
             this.connection.on("LobbyMessage", (message: string, playerName: string) => {
+                console.log("Message got:",message, playerName);
                 this.onReceiveMessage?.(message, playerName);
             });
 

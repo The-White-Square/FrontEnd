@@ -18,8 +18,8 @@ import type { AvatarItem } from '../utils/avatarUtils';
  * @returns Object containing carousel state and navigation functions
  */
 export const useAvatarCarousel = (
-  setSelectedAvatar: (id: number) => void,
-  initialSelectedId?: number | null
+    setSelectedAvatar: (id: number) => void,
+    initialSelectedId?: number | 0
 ) => {
   // Generate all available avatar paths
   const avatars = generateAvatars();
@@ -40,7 +40,13 @@ export const useAvatarCarousel = (
   // Auto-select the center avatar whenever the center position changes
   useEffect(() => {
     // Convert 0-based index to 1-based ID for avatar selection
-    setSelectedAvatar(currentCenterIndex + 1);
+    const avatarId = currentCenterIndex + 1;
+
+    // Save to sessionStorage
+    sessionStorage.setItem('avatarId', avatarId.toString());
+
+    // Update parent component
+    setSelectedAvatar(avatarId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCenterIndex]);
 
@@ -83,7 +89,10 @@ export const useAvatarCarousel = (
   };
 
   const selectCurrentAvatar = () => {
-    setSelectedAvatar(currentCenterIndex + 1);
+    const avatarId = currentCenterIndex + 1;
+    sessionStorage.setItem('avatarId', avatarId.toString());
+    setSelectedAvatar(avatarId);
+    console.debug("Selected avatar:", avatarId);
   };
 
   // Return all state and functions for use in components

@@ -20,19 +20,22 @@ function JoinRoomModal({ onClose, selectedAvatar }: Props) {
         if (!roomCode.trim()) { setStatus("Enter room code"); return; }
         if (!name || !name.trim()) { setStatus("Set a name first"); return; }
 
+        // Get avatarId from sessionStorage, fallback to prop or default to 1
+        const storedAvatarId = sessionStorage.getItem('avatarId');
+        const avatarId = storedAvatarId ? parseInt(storedAvatarId, 10) : (selectedAvatar ?? 1);
+
         setStatus("Joining lobby...");
         try {
             const code = roomCode.trim();
-            const res = await api.joinLobby({ LobbyId: code, Username: name.trim(), IconId: selectedAvatar ?? 1 });
+            const res = await api.joinLobby({ LobbyId: code, Username: name.trim(), IconId: avatarId });
             if (!res.ok) { setStatus("Join failed: " + (res.message ?? "unknown")); return; }
 
             // start hub and add player
             await lobbyHub.start();
-            await lobbyHub.addPlayerToLobby(code, name.trim(), selectedAvatar ?? 1);
+            await lobbyHub.addPlayerToLobby(code, name.trim(), avatarId);
 
-            // Save lobby ID and avatar ID to sessionStorage
+            // Save lobby ID to sessionStorage (avatarId already saved in ChooseAvatarModal)
             sessionStorage.setItem('lobbyId', code);
-            sessionStorage.setItem('avatarId', (selectedAvatar ?? 1).toString());
 
             setStatus("Joined lobby " + code);
 

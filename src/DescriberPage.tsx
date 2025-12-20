@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
 import ChatWindow from './components/ChatWindow';
@@ -94,9 +94,25 @@ function buildStrokesFromEvents(events: DrawingEvent[] | any[]): Stroke[] {
 }
 
 export default function DescriberPage() {
-  const lobbyId = sessionStorage.getItem('lobbyId') || '';
-  const { name: username } = useLobbyName('');
+  const location = useLocation();
   const navigate = useNavigate();
+
+  // Get navigation state including players
+  const state = location.state as {
+    lobbyId?: string;
+    name?: string;
+    iconId?: number;
+    players?: Array<{ id?: string; displayName: string; iconId?: number }>;
+  };
+
+  const lobbyId = state?.lobbyId || sessionStorage.getItem('lobbyId') || '';
+  const { name: username } = useLobbyName('');
+
+  // Log the players received from navigation
+  useEffect(() => {
+    console.log('[DescriberPage] Navigation state:', state);
+    console.log('[DescriberPage] Players from navigation:', state?.players);
+  }, [state]);
 
   const {
     chatMessages,
@@ -104,7 +120,12 @@ export default function DescriberPage() {
     setChatInput,
     sendMessage,
     players,
-  } = useDrawingState(lobbyId, username);
+  } = useDrawingState(lobbyId, username, state?.players);
+
+  // Log players after initialization
+  useEffect(() => {
+    console.log('[DescriberPage] Players in state:', players);
+  }, [players]);
 
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
@@ -122,13 +143,14 @@ export default function DescriberPage() {
       try {
         await lobbyHub.start();
         if (lobbyId) {
+          const iconId = state?.iconId || parseInt(sessionStorage.getItem('avatarId') || '1', 10);
           // force ensures we update even if client believes it already joined
-          await lobbyHub.addPlayerToLobby(lobbyId, username, 0, { force: true });
+          await lobbyHub.addPlayerToLobby(lobbyId, username, iconId, { force: true });
         }
       } catch { /* ignore */ }
     })();
     return () => { mounted = false; };
-  }, [lobbyId, username]);
+  }, [lobbyId, username, state?.iconId]);
 
   useEffect(() => {
     let mounted = true;
@@ -296,111 +318,110 @@ export default function DescriberPage() {
   };
 
   return (
-    <BackgroundLayers>
-      <FloatingControls />
-      <div className="drawing-page">
-        <div className="game-container" style={scaledStyle}>
-          <div className="main-content" style={{ alignItems: 'flex-start' }}>
-            <div className="chat-sidebar">
-              <ChatWindow messages={chatMessages} players={players} />
-            </div>
+      <BackgroundLayers>
+        <FloatingControls />
+        <div className="drawing-page">
+          <div className="game-container" style={scaledStyle}>
+            <div className="main-content" style={{ alignItems: 'flex-start' }}>
+              <div className="chat-sidebar">
+                <ChatWindow messages={chatMessages} players={players} />
+              </div>
 
-            <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-              <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                {/* Header bar: revert to only "Live Preview" */}
-                <div className="frame-label frame-label--abs">
-                  Live Preview
+              <div className="canvas-container" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+                <div className="frame-stack" style={{ width: FRAME_SIZE }}>
+                  {/* Header bar: revert to only "Live Preview" */}
+                  <div className="frame-label frame-label--abs">
+                    Live Preview
+                  </div>
+
+                  <div style={frameBoxStyle}>
+                    <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
+                      <Layer>
+                        <Rect x={0} y={0} width={FRAME_SIZE} height={FRAME_SIZE} fill={'#FFFFFF'} />
+                        {strokes.map(s => (
+                            <Line
+                                key={s.id}
+                                points={s.points}
+                                stroke={s.tool === 'eraser' ? '#FFFFFF' : s.color}
+                                strokeWidth={s.width}
+                                tension={0}
+                                lineCap={'round'}
+                                lineJoin={'round'}
+                                globalCompositeOperation={s.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                            />
+                        ))}
+                      </Layer>
+                    </Stage>
+                  </div>
                 </div>
 
-                <div style={frameBoxStyle}>
-                  <Stage width={FRAME_SIZE} height={FRAME_SIZE}>
-                    <Layer>
-                      <Rect x={0} y={0} width={FRAME_SIZE} height={FRAME_SIZE} fill={'#FFFFFF'} />
-                      {strokes.map(s => (
-                        <Line
-                          key={s.id}
-                          points={s.points}
-                          stroke={s.tool === 'eraser' ? '#FFFFFF' : s.color}
-                          strokeWidth={s.width}
-                          tension={0}
-                          lineCap={'round'}
-                          lineJoin={'round'}
-                          globalCompositeOperation={s.tool === 'eraser' ? 'destination-out' : 'source-over'}
+                <div className="frame-stack" style={{ width: FRAME_SIZE }}>
+                  <div className="frame-label frame-label--abs">Original</div>
+                  <div style={frameBoxStyle}>
+                    {imageUrl ? (
+                        <img
+                            src={imageUrl}
+                            alt="Target"
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                         />
-                      ))}
-                    </Layer>
-                  </Stage>
-                </div>
-              </div>
-
-              <div className="frame-stack" style={{ width: FRAME_SIZE }}>
-                <div className="frame-label frame-label--abs">Original</div>
-                <div style={frameBoxStyle}>
-                  {imageUrl ? (
-                    <img
-                      src={imageUrl}
-                      alt="Target"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    />
-                  ) : (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B4513', fontSize: 24, background: '#fff' }}>
-                      Waiting for image...
-                    </div>
-                  )}
+                    ) : (
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B4513', fontSize: 24, background: '#fff' }}>
+                          Waiting for image...
+                        </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {}
-          <div className="bottom-controls" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
-            <div
-  className="round-timer"
-  aria-live="polite"
-  style={{
-    fontFamily: 'monospace',
-    background: '#fff8f0',
-    border: '2px solid #8B4513',
-    borderRadius: 10,
-    padding: '8px 14px',
-    marginRight: 12,
-    minWidth: 110,
-    textAlign: 'center',
-    color: '#8B4513',
-    fontWeight: 700,
-    fontSize: 28,
-    lineHeight: 1,
-  }}
->
-  {formatTime(secondsLeft)}
-</div>
+            <div className="bottom-controls" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
+              <div
+                  className="round-timer"
+                  aria-live="polite"
+                  style={{
+                    fontFamily: 'monospace',
+                    background: '#fff8f0',
+                    border: '2px solid #8B4513',
+                    borderRadius: 10,
+                    padding: '8px 14px',
+                    marginRight: 12,
+                    minWidth: 110,
+                    textAlign: 'center',
+                    color: '#8B4513',
+                    fontWeight: 700,
+                    fontSize: 28,
+                    lineHeight: 1,
+                  }}
+              >
+                {formatTime(secondsLeft)}
+              </div>
 
-            <ChatInput
-              value={chatInput}
-              onChange={setChatInput}
-              onSend={sendMessage}
-            />
+              <ChatInput
+                  value={chatInput}
+                  onChange={setChatInput}
+                  onSend={sendMessage}
+              />
 
-            <button
-              id="finish-button"
-              onClick={handleFinishClick}
-              style={{
-                marginLeft: 12,
-                background: '#FF6B2B',
-                color: '#fff8f0',
-                border: '3px solid #8B4513',
-                borderRadius: 12,
-                padding: '10px 18px',
-                fontWeight: 700,
-                fontSize: 18,
-                cursor: 'pointer'
-              }}
-            >
-              Finish
-            </button>
+              <button
+                  id="finish-button"
+                  onClick={handleFinishClick}
+                  style={{
+                    marginLeft: 12,
+                    background: '#FF6B2B',
+                    color: '#fff8f0',
+                    border: '3px solid #8B4513',
+                    borderRadius: 12,
+                    padding: '10px 18px',
+                    fontWeight: 700,
+                    fontSize: 18,
+                    cursor: 'pointer'
+                  }}
+              >
+                Finish
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </BackgroundLayers>
+      </BackgroundLayers>
   );
 }

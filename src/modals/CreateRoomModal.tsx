@@ -1,24 +1,31 @@
 import ExpandButton from '../components/ExpandButton';
 import { useState } from "react";
+import { useNavigate } from 'react-router-dom';
 import lobbyHub from "../services/lobbyHub";
 import * as api from "../services/lobbyApi";
 import { useLobbyName } from "../hooks/useLobbyName";
 
 type Props = {
-  onClose?: () => void
-  selectedAvatar?: number | null
+    onClose?: () => void
+    selectedAvatar?: number | null
 }
 
 function CreateRoomModal({ onClose = () => {}, selectedAvatar }: Props) {
     const { name } = useLobbyName('');
     const [status, setStatus] = useState<string>("");
+    const navigate = useNavigate();
 
     const handleCreate = async () => {
         if (!name || !name.trim()) { setStatus("Set a name first"); return; }
 
+        // Get avatarId from sessionStorage, fallback to prop or default to 1
+        const storedAvatarId = sessionStorage.getItem('avatarId');
+        const avatarId = storedAvatarId ? parseInt(storedAvatarId, 10) : (selectedAvatar ?? 1);
+        console.log("Avatars", sessionStorage.getItem('avatarId'), avatarId);
+
         setStatus("Creating lobby...");
         try {
-            const res = await api.joinLobby({ LobbyId: "", Username: name.trim(), IconId: selectedAvatar ?? 1 });
+            const res = await api.joinLobby({ LobbyId: "", Username: name.trim(), IconId: avatarId });
             if (!res.ok) { setStatus("Create failed: " + (res.message ?? "unknown")); return; }
 
             const code = res.lobbyCode ?? (res.message ?? "");
@@ -26,12 +33,15 @@ function CreateRoomModal({ onClose = () => {}, selectedAvatar }: Props) {
 
             // start hub and add player (match Lobby.tsx behavior)
             await lobbyHub.start();
-            await lobbyHub.addPlayerToLobby(code, name.trim(), selectedAvatar ?? 1);
+            await lobbyHub.addPlayerToLobby(code, name.trim(), avatarId);
+
+            sessionStorage.setItem('lobbyId', code);
 
             setStatus("Lobby created: " + code);
-            // Do not navigate — leave user on the current page/modal as requested.
-            // If you want the modal to close automatically after creation uncomment:
-            // onClose();
+
+            // Navigate to Lobby page and pass lobby code in state
+            navigate('/lobby', { state: { lobbyCode: code } });
+            onClose();
         } catch (err) {
             console.error("Create lobby error", err);
             setStatus("Create failed: " + ((err as any)?.message ?? String(err)));

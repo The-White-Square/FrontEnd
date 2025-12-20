@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import BackgroundLayers from './components/BackgroundLayers';
 import FloatingControls from './components/FloatingControls';
 import Canvas, { type CanvasRef } from './components/Canvas';
@@ -34,9 +34,24 @@ const DrawingPage = () => {
   // Reference to canvas component for direct method calls
   const canvasRef = useRef<CanvasRef>(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const lobbyId = sessionStorage.getItem('lobbyId') || '';
+  // Get navigation state including players
+  const state = location.state as {
+    lobbyId?: string;
+    name?: string;
+    iconId?: number;
+    players?: Array<{ id?: string; displayName: string; iconId?: number }>;
+  };
+
+  const lobbyId = state?.lobbyId || sessionStorage.getItem('lobbyId') || '';
   const { name: username } = useLobbyName('');
+
+  // Log the players received from navigation
+  useEffect(() => {
+    console.log('[DrawingPage] Navigation state:', state);
+    console.log('[DrawingPage] Players from navigation:', state?.players);
+  }, [state]);
 
   const {
     selectedColor,
@@ -52,7 +67,12 @@ const DrawingPage = () => {
     sendMessage,
     players,
     isSmallScreen,
-  } = useDrawingState(lobbyId, username);
+  } = useDrawingState(lobbyId, username, state?.players);
+
+  // Log players after initialization
+  useEffect(() => {
+    console.log('[DrawingPage] Players in state:', players);
+  }, [players]);
 
   // IMPORTANT: listen for GoToFinal and ensure we join the lobby group after refresh
   useEffect(() => {
@@ -68,8 +88,9 @@ const DrawingPage = () => {
       try {
         await lobbyHub.start();
         if (lobbyId) {
+          const iconId = state?.iconId || parseInt(sessionStorage.getItem('avatarId') || '1', 10);
           // Force re-join updates connectionId after reload so this client is in the SignalR group
-          await lobbyHub.addPlayerToLobby(lobbyId, username, 0, { force: true });
+          await lobbyHub.addPlayerToLobby(lobbyId, username, iconId, { force: true });
         }
       } catch (err) {
         console.warn('[drawing] hub start/join failed', err);
@@ -77,7 +98,7 @@ const DrawingPage = () => {
     })();
 
     return () => { mounted = false; };
-  }, [navigate, lobbyId, username]);
+  }, [navigate, lobbyId, username, state?.iconId]);
 
   const handleSaveState = useCallback(() => { /* no-op */ }, []);
 
@@ -149,89 +170,89 @@ const DrawingPage = () => {
   };
 
   return (
-    <BackgroundLayers>
-      <FloatingControls />
-      <div className="drawing-page">
-        <div className="game-container" style={scaledStyle}>
-          <div className="main-content">
-            <div className="chat-sidebar">
-              <ChatWindow messages={chatMessages} players={players} />
+      <BackgroundLayers>
+        <FloatingControls />
+        <div className="drawing-page">
+          <div className="game-container" style={scaledStyle}>
+            <div className="main-content">
+              <div className="chat-sidebar">
+                <ChatWindow messages={chatMessages} players={players} />
+              </div>
+
+              <div className="canvas-container">
+                <Canvas
+                    ref={canvasRef}
+                    selectedColor={selectedColor}
+                    brushSize={brushSize}
+                    selectedTool={selectedTool}
+                    onSaveState={handleSaveState}
+                />
+              </div>
+
+              {/* Right Sidebar - Drawing Tools */}
+              <div className="tools-sidebar">
+                {/* Color selection palette */}
+                <ColorPalette
+                    colors={colors}
+                    selectedColor={selectedColor}
+                    onColorSelect={setSelectedColor}
+                />
+
+                {/* Drawing tool buttons (brush, eraser, fill) */}
+                <ToolButtons
+                    selectedTool={selectedTool}
+                    onToolSelect={setSelectedTool}
+                />
+              </div>
+
+              {/* Brush Size Control - Position varies by screen size */}
+              <BrushSizeSlider
+                  brushSize={brushSize}
+                  onBrushSizeChange={setBrushSize}
+                  isSmallScreen={isSmallScreen}
+              />
             </div>
 
-            <div className="canvas-container">
-              <Canvas
-                ref={canvasRef}
-                selectedColor={selectedColor}
-                brushSize={brushSize}
-                selectedTool={selectedTool}
-                onSaveState={handleSaveState}
-              />
-            </div>
-            
-            {/* Right Sidebar - Drawing Tools */}
-            <div className="tools-sidebar">
-              {/* Color selection palette */}
-              <ColorPalette
-                colors={colors}
-                selectedColor={selectedColor}
-                onColorSelect={setSelectedColor}
-              />
-              
-              {/* Drawing tool buttons (brush, eraser, fill) */} 
-              <ToolButtons
-                selectedTool={selectedTool}
-                onToolSelect={setSelectedTool}
-              />
-            </div>
-            
-            {/* Brush Size Control - Position varies by screen size */} 
-            <BrushSizeSlider
-              brushSize={brushSize}
-              onBrushSizeChange={setBrushSize}
-              isSmallScreen={isSmallScreen}
-            />
-          </div>
-          
-          {/* Bottom Controls Row */}
-          <div className="bottom-controls">
-            <div
-              className="round-timer"
-              aria-live="polite"
-              style={{
-                fontFamily: 'monospace',
-                background: '#fff8f0',
-                border: '2px solid #8B4513',
-                borderRadius: 10,
-                padding: '8px 14px',
-                marginRight: 12,
-                minWidth: 110,
-                textAlign: 'center',
-                color: '#8B4513',
-                fontWeight: 700,
-                fontSize: 28,
-                lineHeight: 1,
-              }}
-            >
-              {formatTime(secondsLeft)}
-            </div>
+            {/* Bottom Controls Row */}
+            <div className="bottom-controls">
+              <div
+                  className="round-timer"
+                  aria-live="polite"
+                  style={{
+                    fontFamily: 'monospace',
+                    background: '#fff8f0',
+                    border: '2px solid #8B4513',
+                    borderRadius: 10,
+                    padding: '8px 14px',
+                    marginRight: 12,
+                    minWidth: 110,
+                    textAlign: 'center',
+                    color: '#8B4513',
+                    fontWeight: 700,
+                    fontSize: 28,
+                    lineHeight: 1,
+                  }}
+              >
+                {formatTime(secondsLeft)}
+              </div>
 
-            {/* Chat message input */}
-            <ChatInput
-              value={chatInput}
-              onChange={setChatInput}
-              onSend={sendMessage}
-            />
-            
-            {/* Canvas control buttons (undo, redo, clear) */}
-            <DrawingControls
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              onClear={handleClear}
-            />
+              {/* Chat message input */}
+              <ChatInput
+                  value={chatInput}
+                  onChange={setChatInput}
+                  onSend={sendMessage}
+              />
+
+              {/* Canvas control buttons (undo, redo, clear) */}
+              <DrawingControls
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  onClear={handleClear}
+              />
+            </div>
           </div>
         </div>
-      </div>
-    </BackgroundLayers>
+      </BackgroundLayers>
   );
 };
 

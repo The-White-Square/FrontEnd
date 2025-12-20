@@ -12,11 +12,25 @@ type PlayerItem = { id?: string; displayName: string; iconId?: number };
 export default function Lobby() {
     const [lobbyId, setLobbyId] = useState("");
     const { name, setName, status: nameStatus } = useLobbyName("");
-    const [iconId, setIconId] = useState(1);
+
+    // Initialize iconId from sessionStorage
+    const [iconId, setIconId] = useState(() => {
+        const stored = sessionStorage.getItem('avatarId');
+        return stored ? parseInt(stored, 10) : 1;
+    });
+
     const [status, setStatus] = useState("");
     const [players, setPlayers] = useState<PlayerItem[]>([]);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [myRole, setMyRole] = useState<string | null>(null);
+
+    // Use a ref to track the latest players state for event handlers
+    const playersRef = useRef<PlayerItem[]>([]);
+
+    // Update ref whenever players change
+    useEffect(() => {
+        playersRef.current = players;
+    }, [players]);
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -42,7 +56,10 @@ export default function Lobby() {
             const existing = map.get(p.displayName);
             if (existing) {
                 if (!existing.id && p.id) existing.id = p.id;
-                if (!existing.iconId && p.iconId) existing.iconId = p.iconId;
+                // Only update iconId if the new one is valid (> 0)
+                if (p.iconId && p.iconId > 0 && (!existing.iconId || existing.iconId === 0)) {
+                    existing.iconId = p.iconId;
+                }
             } else {
                 map.set(p.displayName, { ...p });
             }
@@ -53,17 +70,14 @@ export default function Lobby() {
     // robust extractor for player objects coming from REST/hub
     const toPlayerItem = (it: any): PlayerItem => {
         if (!it) return { displayName: "", iconId: 1 };
-        if (typeof it === "string") return { displayName: it, iconId: 1 };
+        if (typeof it === "string") return { displayName: it, iconId: 0 };
 
         const displayName = it.displayName ?? it.DisplayName ?? it.username ?? it.userName ?? it.user ?? "";
         const id = it.id ?? it.Id ?? undefined;
 
-        let rawIcon = it.iconId ?? it.icon ?? it.IconId ?? it.Icon ?? it.iconIdString ?? undefined;
-        if (typeof rawIcon === "string" && rawIcon.trim() !== "") {
-            const n = parseInt(rawIcon, 10);
-            rawIcon = Number.isNaN(n) ? undefined : n;
-        }
-        const iconIdVal = rawIcon != null ? Number(rawIcon) : 1;
+        // Don't default to 4 - use the actual iconId or 0 if missing
+        let rawIcon = it.iconId ?? it.IconId ?? 0;
+        const iconIdVal = rawIcon != null ? Number(rawIcon) : 0;
 
         return { id, displayName, iconId: iconIdVal };
     };
@@ -76,25 +90,53 @@ export default function Lobby() {
     useEffect(() => {
         lobbyHub.onPlayersStateHandler((names) => {
             if (leavingRef.current) return;
-            console.debug("[hub] PlayersState", names);
+            console.debug("[hub on lobby.tsx] PlayersState", names);
             setPlayers(normalizePlayers(names ?? []));
         });
 
         lobbyHub.onPlayerJoinedHandler((lobby, playerName, icon) => {
             if (leavingRef.current) return;
-            console.debug("[hub] PlayerJoined", lobby, playerName, icon);
+            console.debug("[hub on lobby.tsx] PlayerJoined", lobby, playerName, icon);
+
+            // Skip invalid icons
+            if (icon <= 0) return;
+
             setPlayers((prev) => {
+                // Update existing player
                 if (prev.some((x) => x.displayName === playerName)) {
-                    return prev.map(p => p.displayName === playerName && icon ? { ...p, iconId: icon } : p);
+                    return prev.map(p => {
+                        if (p.displayName === playerName) {
+                            return { ...p, iconId: icon };
+                        }
+                        return p;
+                    });
                 }
-                return uniquePlayers([...prev, { displayName: playerName, iconId: icon ?? 1 }]);
+                // Add new player
+                return uniquePlayers([...prev, { displayName: playerName, iconId: icon }]);
             });
         });
 
         // Navigate immediately on role assignment; avoid updating lobby visuals
         lobbyHub.onAssignedRoleHandler((role) => {
             if (leavingRef.current) return;
-            console.debug("[hub] AssignedRole", role);
+            console.debug("[hub on lobby.tsx] AssignedRole", role);
+
+            // Log player list when roles are assigned (fires for all clients)
+            // Use playersRef to get the current state
+            const currentPlayers = playersRef.current;
+            console.log("=== PLAYER LIST ON ROLE ASSIGNMENT ===");
+            console.log("Players array:", currentPlayers);
+            console.log("Player count:", currentPlayers.length);
+            currentPlayers.forEach((p, index) => {
+                console.log(`Player ${index + 1}:`, {
+                    displayName: p.displayName,
+                    iconId: p.iconId,
+                    id: p.id
+                });
+            });
+            console.log("My name:", name);
+            console.log("My iconId:", iconId);
+            console.log("======================================");
 
             const r = (role ?? "").toString().toLowerCase();
             const isDescriber = r.includes("explainer") || r.includes("describer");
@@ -103,7 +145,13 @@ export default function Lobby() {
             const stateLobbyCode = (location as any)?.state?.lobbyCode;
             const code = lobbyId || stateLobbyCode || "";
 
-            const navState = { lobbyId: code, name, iconId };
+            // Include players data in navigation state
+            const navState = {
+                lobbyId: code,
+                name,
+                iconId,
+                players: currentPlayers // Pass the players array
+            };
 
             leavingRef.current = true; // block further lobby updates
             if (isDrawer) {
@@ -167,7 +215,10 @@ export default function Lobby() {
     useEffect(() => {
         const state = (location && (location as any).state) ?? {};
         const codeFromState: string | undefined = state.lobbyCode;
-        const iconFromState: number | undefined = state.iconId;
+
+        // Get iconId from sessionStorage as the source of truth
+        const storedIconId = sessionStorage.getItem('avatarId');
+        const iconFromStorage = storedIconId ? parseInt(storedIconId, 10) : 1;
 
         if (!codeFromState) return;
 
@@ -184,21 +235,26 @@ export default function Lobby() {
             }
 
             setLobbyId(codeFromState);
+            setIconId(iconFromStorage); // Update local state
             setStatus("Joining lobby...");
 
             try {
                 // Ensure connection is started and we listen for PlayersState BEFORE server broadcasts
                 await lobbyHub.start();
 
-                // now call server-side join (so server can persist the player)
-                const res = await api.joinLobby({ LobbyId: codeFromState, Username: name, IconId: iconFromState ?? iconId });
+                // now call server-side join with iconId from sessionStorage
+                const res = await api.joinLobby({
+                    LobbyId: codeFromState,
+                    Username: name,
+                    IconId: iconFromStorage
+                });
                 if (!res.ok) {
                     setStatus("Join failed: " + (res.message ?? "unknown"));
                     return;
                 }
 
-                // tell hub to add this player to lobby with force:true to guarantee a fresh ConnectionId is set
-                await lobbyHub.addPlayerToLobby(codeFromState, name, iconFromState ?? iconId, { force: true });
+                // tell hub to add this player to lobby with iconId from sessionStorage
+                await lobbyHub.addPlayerToLobby(codeFromState, name, iconFromStorage, { force: true });
 
                 // persist for downstream pages
                 try { sessionStorage.setItem("lobbyId", codeFromState); } catch {}
@@ -241,8 +297,27 @@ export default function Lobby() {
 
         try {
             setStatus("Starting...");
+
+            // Log current player list
+            console.log("=== PLAYER LIST ON START ===");
+            console.log("Players array:", players);
+            console.log("Player count:", players.length);
+            players.forEach((p, index) => {
+                console.log(`Player ${index + 1}:`, {
+                    displayName: p.displayName,
+                    iconId: p.iconId,
+                    id: p.id
+                });
+            });
+            console.log("============================");
+
             await lobbyHub.start();
-            await lobbyHub.addPlayerToLobby(code, name, iconId, { force: true });
+
+            // Use iconId from sessionStorage
+            const storedIconId = sessionStorage.getItem('avatarId');
+            const iconToUse = storedIconId ? parseInt(storedIconId, 10) : iconId;
+
+            await lobbyHub.addPlayerToLobby(code, name, iconToUse, { force: true });
 
             await refreshPlayersFromServer(code);
             const deadline = Date.now() + 3000;
@@ -309,7 +384,7 @@ export default function Lobby() {
     };
     const startButtonWrap: React.CSSProperties = { display: "flex", justifyContent: "center", marginTop: 40 };
 
-    // If we’re leaving, render nothing to avoid showing transient UI
+    // If we're leaving, render nothing to avoid showing transient UI
     if (leavingRef.current) {
         return null;
     }
@@ -320,11 +395,15 @@ export default function Lobby() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div>
-                        <strong>Name:</strong> <span>{name || "—"}</span>
+                        <strong>Name:</strong> <span>{name || "â€“"}</span>
                         {nameStatus && <div style={{ fontSize: 12, color: '#666' }}>{nameStatus}</div>}
                     </div>
                     <label style={{ marginLeft: 8 }}>
-                        IconId: <input type="number" value={iconId} onChange={e => setIconId(parseInt(e.target.value || "0"))} style={{ width: 64 }} />
+                        IconId: <input type="number" value={iconId} onChange={e => {
+                        const newId = parseInt(e.target.value || "1");
+                        setIconId(newId);
+                        sessionStorage.setItem('avatarId', newId.toString());
+                    }} style={{ width: 64 }} />
                     </label>
                 </div>
 
