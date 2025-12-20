@@ -48,6 +48,22 @@ export default function Lobby() {
         }
     };
 
+    const lobbyCode =
+        lobbyId || (location as any)?.state?.lobbyCode || "";
+
+    const [copied, setCopied] = useState(false);
+
+    const copyLobbyCode = async () => {
+        if (!lobbyCode) return;
+        try {
+            await navigator.clipboard.writeText(lobbyCode);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch (err) {
+            console.error("Failed to copy lobby code", err);
+        }
+    };
+
     // dedupe helper (unique by displayName)
     const uniquePlayers = (list: PlayerItem[]) => {
         const map = new Map<string, PlayerItem>();
@@ -382,6 +398,19 @@ export default function Lobby() {
         textOverflow: "ellipsis",
         pointerEvents: "none",
     };
+
+    const lobbyCodeStyle: React.CSSProperties = {
+        cursor: "pointer",
+        textAlign: "center",
+        marginTop: 16,
+        color: "#6b0000",
+        fontFamily: "'Jersey 25', sans-serif",
+        userSelect: "none",
+        position: "relative",   // ⬅️ important
+    };
+
+
+
     const startButtonWrap: React.CSSProperties = { display: "flex", justifyContent: "center", marginTop: 40 };
 
     // If we're leaving, render nothing to avoid showing transient UI
@@ -392,28 +421,52 @@ export default function Lobby() {
     return (
         <BackgroundLayers>
             <div style={{ position: 'relative', zIndex: 1, color: 'black', padding: 20 }}>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div>
-                        <strong>Name:</strong> <span>{name || "–"}</span>
-                        {nameStatus && <div style={{ fontSize: 12, color: '#666' }}>{nameStatus}</div>}
+                {/* Lobby Code (click to copy) */}
+                <div
+                    style={{
+                        marginTop: 16,
+                        textAlign: "center",
+                        fontFamily: "'Jersey 25', sans-serif",
+                        color: "#6b0000",
+                        cursor: "pointer",
+                        userSelect: "none",
+                    }}
+                    onClick={copyLobbyCode}
+                >
+                    <div style={{ fontSize: 18, opacity: 0.8 }}>
+                        Lobby Code
                     </div>
-                    <label style={{ marginLeft: 8 }}>
-                        IconId: <input type="number" value={iconId} onChange={e => {
-                        const newId = parseInt(e.target.value || "1");
-                        setIconId(newId);
-                        sessionStorage.setItem('avatarId', newId.toString());
-                    }} style={{ width: 64 }} />
-                    </label>
+
+                    {/* Code wrapper */}
+                    <div
+                        style={{
+                            position: "relative",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            fontSize: 44,
+                            fontWeight: 700,
+                        }}
+                    >
+                        <span>{lobbyCode}</span>
+
+                        {copied && (
+                            <span
+                                style={{
+                                    position: "absolute",
+                                    left: "100%",      // ⬅️ right after code
+                                    marginLeft: 8,     // spacing
+                                    fontSize: 14,
+                                    fontWeight: 500,
+                                    color: "#333",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                Copied!
+            </span>
+                        )}
+                    </div>
                 </div>
 
-                <div style={{ marginTop: 8 }}>
-                    <button onClick={handleGetImage}>GET /lobby/{lobbyId}/image</button>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                    <strong>Status:</strong> {status}
-                </div>
 
                 {/* Players header */}
                 <div style={{ marginTop: 18 }}>
